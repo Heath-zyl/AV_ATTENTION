@@ -1,0 +1,7 @@
+*pth
+*csv
+*npy
+val*.json
+workdir/
+*zip
+__pycache__
