@@ -119,17 +119,20 @@ class AVData(Dataset):
         file_np = np.load(self.files[file_idx], allow_pickle=True)
         sample = file_np[sample_idx]
         
-        frame_id = sample['frame_id']
-        ego_veh_id = sample['ego_veh'][0]
-        
         if self.test_mode:
-            print(f'frame_id: {frame_id}')
-            print(f'ego_veh_id: {ego_veh_id}')
+            frame_id = sample['frame_id']
+            ego_veh_id = sample['ego_veh'][0]
+            # print(f'frame_id: {frame_id}')
+            # print(f'ego_veh_id: {ego_veh_id}')
             
-            print('traffic veh id: ', end='')
+            vec_traffic_id_list = []
+            # print('traffic veh id: ', end='')
             for traffic_vec in sample['traffic_veh_list']:
-                print(traffic_vec[0], end=',')
-            print()
+                # print(traffic_vec[0], end=',')
+                vec_traffic_id_list.append(traffic_vec[0])
+            # print()
+            return self.transform(sample), frame_id, ego_veh_id, vec_traffic_id_list
+            
         
         if len(sample['traffic_veh_list']) == 0:
             random_index = np.random.randint(0, self.__len__()+1)
