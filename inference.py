@@ -42,7 +42,7 @@ def main():
     nhead = 8
     num_layers = 6
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20230925_172524/epoch_1.pth', map_location='cpu')
+    weights = torch.load('workdir/20230925_172524/epoch_4.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():

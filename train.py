@@ -59,13 +59,13 @@ def main():
     # Create Model
     d_model = 64
     nhead = 8
-    num_layers = 6
+    num_layers = 4
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[rank], output_device=rank, broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
     lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8, 11], gamma=0.1)
     print_log('created optimizer.')
 
@@ -93,10 +93,10 @@ def main():
             
             # print(ego_action_data.shape)
             
-            try:
-                output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, traffic_veh_key_padding)
-            except Exception as e:
-                print(e)
+            # try:
+            output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, traffic_veh_key_padding)
+            # except Exception as e:
+                # print(e)
                 # print(ego_veh.shape, traffic_veh.shape, ego_future_path.shape)
 
             output = torch.squeeze(output)
