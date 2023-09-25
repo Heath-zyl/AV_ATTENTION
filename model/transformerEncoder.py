@@ -23,7 +23,6 @@ class TransformerEncoder(Module):
 
     def __init__(self, encoder_layer, num_layers, norm=None):
         super(TransformerEncoder, self).__init__()
-        # self.layers = _get_clones(encoder_layer, num_layers)
         
         self.layers = ModuleList([copy.deepcopy(encoder_layer) for i in range(num_layers)])
         
@@ -41,6 +40,7 @@ class TransformerEncoder(Module):
         Shape:
             see the docs in Transformer class.
         """
+        
         if self.training:
             output = src
 

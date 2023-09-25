@@ -69,16 +69,11 @@ class TransformerEncoderLayer(nn.Module):
         """
         
         if self.training:
-            # print(self.self_attn) # S, BS, d_model
-            # print(src.shape) # MultiheadAttention
             src2 = self.self_attn(src, src, src, attn_mask=src_mask,
                                 key_padding_mask=src_key_padding_mask)[0]
-            
-            # src2 = self.self_attn(src, src, src)[0]
-            
+                        
             src = src + self.dropout1(src2)
             src = self.norm1(src)
-            # print(src.shape) # S, BS, d_model
             
             src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
             src = src + self.dropout2(src2)
@@ -86,8 +81,6 @@ class TransformerEncoderLayer(nn.Module):
             return src
         
         else:
-            # print(self.self_attn) # S, BS, d_model
-            # print(src.shape) # MultiheadAttention
             src2, attention_weights = self.self_attn(src, src, src, attn_mask=src_mask,
                                 key_padding_mask=src_key_padding_mask)
             

@@ -171,20 +171,6 @@ class MultiheadAttention(Module):
                 q_proj_weight=self.q_proj_weight, k_proj_weight=self.k_proj_weight,
                 v_proj_weight=self.v_proj_weight)
         else: # this branch
-           
-            # print(query.shape, key.shape, value.shape)
-            # # 都是 S, BS, d_model
-            
-            # print(self.embed_dim, self.num_heads) # 64 8
-            
-            # print(self.in_proj_weight.shape, self.in_proj_bias.shape) # torch.Size([192, 64]) torch.Size([192])
-            
-            # print(self.bias_k, self.bias_v, self.add_zero_attn) # None None False
-            
-            # print(self.dropout, self.out_proj.weight.shape, self.out_proj.bias.shape) # 0.1 torch.Size([64, 64]) torch.Size([64])
-            
-            # print(key_padding_mask, need_weights, attn_mask) # None True None
-            
             outs = F.multi_head_attention_forward(
                     query, key, value, self.embed_dim, self.num_heads,
                     self.in_proj_weight, self.in_proj_bias,
@@ -193,7 +179,5 @@ class MultiheadAttention(Module):
                     training=self.training,
                     key_padding_mask=key_padding_mask, need_weights=need_weights,
                     attn_mask=attn_mask)
-            
-            # print(outs[0].shape, outs[1].shape) # torch.Size([7, 1, 64]) torch.Size([1, 7, 7])
-            
+                        
             return outs

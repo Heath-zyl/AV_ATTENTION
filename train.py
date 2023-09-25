@@ -2,6 +2,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 # from dataset import DistributedGroupSampler
 from data.train_data import AVData
+from data.collater import collater
 from torch.utils.data import DataLoader
 from model.carTrackTransformerEncoder import CarTrackTransformerEncoder
 import torch.optim as optim
@@ -37,10 +38,12 @@ def main():
     assert rank == dist.get_rank()
     world_size = dist.get_world_size()
     
+    
     # Create Workdir
     time_stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     parser.workdir = os.path.join(parser.workdir, time_stamp)
     make_dirs(parser.workdir)
+    print_log(f'pytorch version: {torch.__version__}')
     print_log(f'created workdir {parser.workdir}.')
     
     # Create Tensorboard
@@ -50,7 +53,7 @@ def main():
     # Create Data
     dataset_train = AVData('process_data/npy_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=1, sampler=distributedSampler, pin_memory=True)
+    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=16, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
     
     # Create Model
@@ -81,20 +84,24 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-            ego_veh = batch['ego_veh'].cuda()
-            traffic_veh = batch['traffic_veh_list'].cuda()
-            ego_future_path = batch['ego_future_path'].cuda()
-            ego_action = batch['ego_action'].cuda()
-            if ego_action.numel() == 1 and len(ego_action.shape) == 1:
-                ego_action = torch.unsqueeze(ego_action, 0)
+            
+            ego_veh_data = batch['ego_veh_data'].cuda()
+            traffic_veh_data = batch['traffic_veh_data'].cuda()
+            ego_future_track_data = batch['ego_future_track_data'].cuda()
+            ego_action_data = batch['ego_action_data'].cuda()
+            traffic_veh_key_padding = batch['traffic_veh_key_padding'].cuda()
+            
+            # print(ego_action_data.shape)
             
             try:
-                output = model(ego_veh, traffic_veh, ego_future_path)
+                output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, traffic_veh_key_padding)
             except Exception as e:
                 print(e)
-                print(ego_veh.shape, traffic_veh.shape, ego_future_path.shape)
+                # print(ego_veh.shape, traffic_veh.shape, ego_future_path.shape)
+
+            output = torch.squeeze(output)
         
-            loss = criterion(output, ego_action)
+            loss = criterion(output, ego_action_data)
             
             optimizer.zero_grad()
             loss.backward()
@@ -104,7 +111,7 @@ def main():
             
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
             
-            if i % 200 == 0:
+            if i % 10 == 0:
                 print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | loss:{"%.4f"%loss.data}')
             
         lr_scheduler.step()

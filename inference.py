@@ -5,15 +5,11 @@ from collections import OrderedDict
 import sys
 
 
-def mapIdx(ts_length, ts_num, traffic_id_list):
+def mapIdx(ts_num, traffic_id_list):
     if ts_num == 0:
-        return 'cls_ebd'
-    elif ts_num == 1:
         return 'ego'
-    elif ts_num == ts_length - 1:
-        return 'ego_fp'
     else:
-        return str(traffic_id_list[ts_num - 2])
+        return str(traffic_id_list[ts_num - 1])
 
 
 def main():
@@ -42,11 +38,11 @@ def main():
     # model = CarTrackTransformerEncoder(num_layers=6, nhead=8, d_model=64)
     # weights = torch.load('/home/ylzhang/AV_attention/workdir/20230922_160134/epoch_2.pth', map_location='cpu')
     
-    d_model = 16
-    nhead = 4
-    num_layer = 4
-    model = CarTrackTransformerEncoder(num_layers=num_layer, nhead=nhead, d_model=d_model)
-    weights = torch.load('/workspace/workdir/20230923_155634/epoch_12.pth', map_location='cpu')
+    d_model = 64
+    nhead = 8
+    num_layers = 6
+    model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
+    weights = torch.load('workdir/20230925_172524/epoch_1.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -72,40 +68,40 @@ def main():
     layer_idx = -1
     print(f'The attention weights of layer: {layer_idx}:')
     atten_squeeze = torch.squeeze(outs[1][layer_idx])
-    print('The attention weights of CLS_EBD:')
+    print('The attention weights of EGO:')
     cls_ebd_attention_weights = atten_squeeze[0]
     sort_idx = torch.argsort(cls_ebd_attention_weights, descending=True)
     for si in sort_idx:
-        read_idx = mapIdx(len(sort_idx), si, vec_traffic_id_list)
+        read_idx = mapIdx(si, vec_traffic_id_list)
         print(f'{read_idx}({"%.4f"%cls_ebd_attention_weights[si]})', end=', ')
     print()
     
-    print('************************************')
-    layer_idx = -1
-    print(f'The attention weights of layer: {layer_idx}:')
-    atten_squeeze = torch.squeeze(outs[1][layer_idx])
-    print('The attention weights of ego_veh:')
-    ego_attention_weights = atten_squeeze[1]
-    # print(ego_attention_weights)
-    sort_idx = torch.argsort(ego_attention_weights, descending=True)
-    for si in sort_idx:
-        read_idx = mapIdx(len(sort_idx), si, vec_traffic_id_list)
-        print(f'{read_idx}({"%.4f"%ego_attention_weights[si]})', end=', ')
-    print()
+    # print('************************************')
+    # layer_idx = -1
+    # print(f'The attention weights of layer: {layer_idx}:')
+    # atten_squeeze = torch.squeeze(outs[1][layer_idx])
+    # print('The attention weights of ego_veh:')
+    # ego_attention_weights = atten_squeeze[1]
+    # # print(ego_attention_weights)
+    # sort_idx = torch.argsort(ego_attention_weights, descending=True)
+    # for si in sort_idx:
+    #     read_idx = mapIdx(si, vec_traffic_id_list)
+    #     print(f'{read_idx}({"%.4f"%ego_attention_weights[si]})', end=', ')
+    # print()
     
     
-    print('************************************')
-    layer_idx = -1
-    print(f'The attention future_track of layer: {layer_idx}:')
-    atten_squeeze = torch.squeeze(outs[1][layer_idx])
-    print('The attention weights of future_track:')
-    fp_attention_weights = atten_squeeze[-1]
-    # print(ego_attention_weights)
-    sort_idx = torch.argsort(fp_attention_weights, descending=True)
-    for si in sort_idx:
-        read_idx = mapIdx(len(sort_idx), si, vec_traffic_id_list)
-        print(f'{read_idx}({"%.4f"%fp_attention_weights[si]})', end=', ')
-    print()
+    # print('************************************')
+    # layer_idx = -1
+    # print(f'The attention future_track of layer: {layer_idx}:')
+    # atten_squeeze = torch.squeeze(outs[1][layer_idx])
+    # print('The attention weights of future_track:')
+    # fp_attention_weights = atten_squeeze[-1]
+    # # print(ego_attention_weights)
+    # sort_idx = torch.argsort(fp_attention_weights, descending=True)
+    # for si in sort_idx:
+    #     read_idx = mapIdx(si, vec_traffic_id_list)
+    #     print(f'{read_idx}({"%.4f"%fp_attention_weights[si]})', end=', ')
+    # print()
     
     
 if __name__ == '__main__':
