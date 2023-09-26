@@ -6,10 +6,7 @@ import sys
 
 
 def mapIdx(ts_num, traffic_id_list):
-    if ts_num == 0:
-        return 'ego'
-    else:
-        return str(traffic_id_list[ts_num - 1])
+    return traffic_id_list[ts_num]
 
 
 def main():
@@ -40,9 +37,9 @@ def main():
     
     d_model = 64
     nhead = 8
-    num_layers = 1
+    num_layers = 4
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20230926_132510/epoch_7.pth', map_location='cpu')
+    weights = torch.load('workdir/20230926_201754/epoch_2.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -59,22 +56,30 @@ def main():
     print(f'There are {len(outs[1])} groups of attention weights and each has shape of {outs[1][0].shape}')
     print('************************************')
 
+    attn = outs[1].squeeze()
+    sort_idx = torch.argsort(attn, descending=True)
+
+    for si in sort_idx:
+        read_idx = mapIdx(si, vec_traffic_id_list)
+        print(f'{read_idx}({"%.4f"%attn[si]})', end=', ')
+    print('\n************************************')
+
     # for atten in outs[1]:
     #     atten_squeeze = torch.squeeze(atten)
     #     print(atten_squeeze.shape)
     #     print(atten_squeeze)
     #     print('====================================')
     
-    for i in range(len(outs[1])):
-        layer_idx = i
-        print(f'The attention weights of layer: {layer_idx}:')
-        atten_squeeze = torch.squeeze(outs[1][layer_idx])
-        cls_ebd_attention_weights = atten_squeeze[0]
-        sort_idx = torch.argsort(cls_ebd_attention_weights, descending=True)
-        for si in sort_idx:
-            read_idx = mapIdx(si, vec_traffic_id_list)
-            print(f'{read_idx}({"%.4f"%cls_ebd_attention_weights[si]})', end=', ')
-        print('\n************************************')
+    # for i in range(len(outs[1])):
+    #     layer_idx = i
+    #     print(f'The attention weights of layer: {layer_idx}:')
+    #     atten_squeeze = torch.squeeze(outs[1][layer_idx])
+    #     cls_ebd_attention_weights = atten_squeeze[0]
+    #     sort_idx = torch.argsort(cls_ebd_attention_weights, descending=True)
+    #     for si in sort_idx:
+    #         read_idx = mapIdx(si, vec_traffic_id_list)
+    #         print(f'{read_idx}({"%.4f"%cls_ebd_attention_weights[si]})', end=', ')
+    #     print('\n************************************')
 
         
     # print('************************************')

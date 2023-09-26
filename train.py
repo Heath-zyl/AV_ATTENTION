@@ -66,8 +66,8 @@ def main():
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[24, 33], gamma=0.1)
+    optimizer = optim.SGD(model.parameters(), lr=1e-1, momentum=0.9, weight_decay=0.0001)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80, 90, 95], gamma=0.1)
     print_log('created optimizer.')
 
     # Create Criterion
@@ -75,7 +75,7 @@ def main():
     criterion = torch.nn.L1Loss()
     print_log('created criterion.')
 
-    for epoch in range(1, 36):
+    for epoch in range(1, 101):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -85,9 +85,6 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-            
-            if i > 100:
-                break
                 
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
@@ -103,7 +100,8 @@ def main():
                 # print(e)
                 # print(ego_veh.shape, traffic_veh.shape, ego_future_path.shape)
 
-            output = torch.squeeze(output)
+            # print(output.shape, ego_action_data.shape)
+            # output = torch.squeeze(output, 1)
         
             loss = criterion(output, ego_action_data)
             
