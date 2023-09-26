@@ -48,6 +48,7 @@ def main():
     
     # Create Tensorboard
     tb_loss = TB(workdir=parser.workdir, title='loss')
+    tb_lr = TB(workdir=parser.workdir, title='lr')
     print_log(f'created tensorboard.')
     
     # Create Data
@@ -66,7 +67,7 @@ def main():
 
     # Create Optimizer
     optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[8, 11], gamma=0.1)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[24, 33], gamma=0.1)
     print_log('created optimizer.')
 
     # Create Criterion
@@ -74,7 +75,7 @@ def main():
     criterion = torch.nn.L1Loss()
     print_log('created criterion.')
 
-    for epoch in range(1, 13):
+    for epoch in range(1, 36):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -85,6 +86,9 @@ def main():
             
         for i, batch in enumerate(dataloader_train):
             
+            if i > 100:
+                break
+                
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
@@ -109,10 +113,12 @@ def main():
                 
             dist.all_reduce(loss.div_(world_size))
             
+            current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
+            tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | loss:{"%.4f"%loss.data}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data}')
             
         lr_scheduler.step()
         

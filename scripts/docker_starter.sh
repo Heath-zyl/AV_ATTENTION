@@ -5,7 +5,7 @@ docker pull $DOCKER_ADDRESS
 
 nvidia-docker run --shm-size=100gb -it -d \
     --network=host \
-    --name ≠≠ \
+    --name av_attention \
     -e COLUMNS=`tput cols` \
     -e LINES=`tput lines` \
     -v /etc/localtime:/etc/localtime:ro \

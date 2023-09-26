@@ -40,9 +40,9 @@ def main():
     
     d_model = 64
     nhead = 8
-    num_layers = 6
+    num_layers = 1
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20230925_172524/epoch_4.pth', map_location='cpu')
+    weights = torch.load('workdir/20230926_132510/epoch_7.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -65,17 +65,18 @@ def main():
     #     print(atten_squeeze)
     #     print('====================================')
     
-    layer_idx = -1
-    print(f'The attention weights of layer: {layer_idx}:')
-    atten_squeeze = torch.squeeze(outs[1][layer_idx])
-    print('The attention weights of EGO:')
-    cls_ebd_attention_weights = atten_squeeze[0]
-    sort_idx = torch.argsort(cls_ebd_attention_weights, descending=True)
-    for si in sort_idx:
-        read_idx = mapIdx(si, vec_traffic_id_list)
-        print(f'{read_idx}({"%.4f"%cls_ebd_attention_weights[si]})', end=', ')
-    print()
-    
+    for i in range(len(outs[1])):
+        layer_idx = i
+        print(f'The attention weights of layer: {layer_idx}:')
+        atten_squeeze = torch.squeeze(outs[1][layer_idx])
+        cls_ebd_attention_weights = atten_squeeze[0]
+        sort_idx = torch.argsort(cls_ebd_attention_weights, descending=True)
+        for si in sort_idx:
+            read_idx = mapIdx(si, vec_traffic_id_list)
+            print(f'{read_idx}({"%.4f"%cls_ebd_attention_weights[si]})', end=', ')
+        print('\n************************************')
+
+        
     # print('************************************')
     # layer_idx = -1
     # print(f'The attention weights of layer: {layer_idx}:')

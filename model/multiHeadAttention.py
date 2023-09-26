@@ -158,7 +158,7 @@ class MultiheadAttention(Module):
         - attn_output_weights: :math:`(N, L, S)` where N is the batch size,
           L is the target sequence length, S is the source sequence length.
         """
-        
+            
         if not self._qkv_same_embed_dim:
             return F.multi_head_attention_forward(
                 query, key, value, self.embed_dim, self.num_heads,
