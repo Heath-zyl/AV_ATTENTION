@@ -14,6 +14,7 @@ import time
 from master_ops import print_log, make_dirs, master_only, TB, save_model
 from torch.utils.data import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
+import numpy as np
 
 
 def parse(args=None):
@@ -54,26 +55,29 @@ def main():
     # Create Data
     dataset_train = AVData('process_data/npy_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=16, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
+    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=32, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
+
+    # print([(k, v.shape) for k, v in dataset_train[0].items()])
+    # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
     d_model = 64
     nhead = 8
-    num_layers = 4
+    num_layers = 6
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[rank], output_device=rank, broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=1e-1, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
     lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80, 90, 95], gamma=0.1)
     print_log('created optimizer.')
 
     # Create Criterion
     # criterion = torch.nn.MSELoss(size_average=None, reduce=None, reduction='mean')
-    criterion = torch.nn.L1Loss()
-    print_log('created criterion.')
+    # criterion = torch.nn.L1Loss()
+    # print_log('created criterion.')
 
     for epoch in range(1, 101):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
@@ -85,45 +89,73 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-                
+                                    
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
             ego_action_data = batch['ego_action_data'].cuda()
             traffic_veh_key_padding = batch['traffic_veh_key_padding'].cuda()
             
-            # print(ego_action_data.shape)
+            output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, ego_action_data, traffic_veh_key_padding)
             
-            # try:
-            output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, traffic_veh_key_padding)
-            # except Exception as e:
-                # print(e)
-                # print(ego_veh.shape, traffic_veh.shape, ego_future_path.shape)
+            candidates_BS = 32
+            loss = torch.zeros(1,).type_as(ego_veh_data)
+            for j in range(len(output)):
+                expert_output = output[j]
+                
+                candidates_action_list = []
+                while len(candidates_action_list) < candidates_BS:
+                    candidates_action = np.random.uniform(low=-5, high=3, size=(1,))[0]
+                    if np.abs(candidates_action - ego_action_data[j].detach().cpu().numpy()) < 0.2:
+                        continue
+                
+                    candidates_action_list.append(candidates_action)
+                
+                # print(expert_action, candidates_action_list)
+                
+                candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
+                # print(candidates_action.shape)
+                                
+                single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))
+                single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_data[j], 0))
+                single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_track_data[j], 0))
+                single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
+                                
+                candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action, single_traffic_veh_key_padding)
 
-            # print(output.shape, ego_action_data.shape)
-            # output = torch.squeeze(output, 1)
-        
-            loss = criterion(output, ego_action_data)
+                prob = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)) + torch.exp(expert_output))
+
+                loss += -torch.log(prob)
+
+            loss = loss / candidates_BS / len(batch)
+            avg_prob = torch.exp((-loss))
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
                 
             dist.all_reduce(loss.div_(world_size))
+            dist.all_reduce(avg_prob.div_(world_size))
             
             current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
             tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%avg_prob}')
             
         lr_scheduler.step()
         
         save_model(parser.workdir, epoch, model)
  
     tb_loss.close()
-        
+
+
+def expand_dim_0(sz, tensor):
+    dst_shape = tensor.shape[1:]
+    tensor = tensor.expand(sz, *dst_shape)
+    return tensor
+
     
 if __name__ == '__main__':
     main()

@@ -1,7 +1,0 @@
-frame_id表示第几帧画面，训练用不上
-网络的输入：
-ego_veh 表示主车的状态：x,y,vx,vy,航向角
-traffic_veh_list 表示交通车的状态：a list of traffic_veh; traffic_veh: x,y,vx,vy,航向角; list中有几个元素，表示有几个交通车;
-ego_future_path 表示未来轨迹，两点之间间隔0.2米, a list of tuple(x,y,航向角)
-网络的输出：
-ego_action表示主车的加速度
