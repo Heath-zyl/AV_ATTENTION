@@ -50,12 +50,13 @@ def main():
     # Create Tensorboard
     tb_loss = TB(workdir=parser.workdir, title='loss')
     tb_lr = TB(workdir=parser.workdir, title='lr')
+    tb_avg_prob = TB(workdir=parser.workdir, title='avg_prob')
     print_log(f'created tensorboard.')
     
     # Create Data
     dataset_train = AVData('process_data/npy_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=32, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
+    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=2, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
     # print([(k, v.shape) for k, v in dataset_train[0].items()])
@@ -71,7 +72,7 @@ def main():
 
     # Create Optimizer
     optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80, 90, 95], gamma=0.1)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[6, 8], gamma=0.1)
     print_log('created optimizer.')
 
     # Create Criterion
@@ -79,7 +80,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 101):
+    for epoch in range(1, 11):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -98,22 +99,24 @@ def main():
             
             output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, ego_action_data, traffic_veh_key_padding)
             
-            candidates_BS = 32
+            candidates_BS = 801
+            candidates_action_list = np.arange(-5, 3.01, 0.01)
+            candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
             loss = torch.zeros(1,).type_as(ego_veh_data)
             for j in range(len(output)):
                 expert_output = output[j]
                 
-                candidates_action_list = []
-                while len(candidates_action_list) < candidates_BS:
-                    candidates_action = np.random.uniform(low=-5, high=3, size=(1,))[0]
-                    if np.abs(candidates_action - ego_action_data[j].detach().cpu().numpy()) < 0.2:
-                        continue
+                # candidates_action_list = []
+                # while len(candidates_action_list) < candidates_BS:
+                #     candidates_action = np.random.uniform(low=-5, high=3, size=(1,))[0]
+                #     if np.abs(candidates_action - ego_action_data[j].detach().cpu().numpy()) < 0.2:
+                #         continue
                 
-                    candidates_action_list.append(candidates_action)
+                #     candidates_action_list.append(candidates_action)
                 
                 # print(expert_action, candidates_action_list)
                 
-                candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
+                # candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
                 # print(candidates_action.shape)
                                 
                 single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))
@@ -123,11 +126,11 @@ def main():
                                 
                 candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action, single_traffic_veh_key_padding)
 
-                prob = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)) + torch.exp(expert_output))
+                prob = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
 
                 loss += -torch.log(prob)
 
-            loss = loss / candidates_BS / len(batch)
+            loss = loss / len(batch)
             avg_prob = torch.exp((-loss))
             
             optimizer.zero_grad()
@@ -139,6 +142,7 @@ def main():
             
             current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
+            tb_avg_prob.write(avg_prob.data, (epoch - 1) * len(dataloader_train) + i)
             tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:

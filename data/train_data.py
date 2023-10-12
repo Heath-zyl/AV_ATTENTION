@@ -103,7 +103,7 @@ class AVData(Dataset):
         self.files = sorted(files, key=lambda x:int(x.split('_')[-1].split('.')[0]))
         last_file_np = np.load(self.files[-1], allow_pickle=True)
         self.total_num = (len(self.files) - 1) * 200 + len(last_file_np)
-        # print_log(f'total num of data: {self.total_num}')
+        print_log(f'total num of data: {self.total_num}')
         del last_file_np
         
         self.transform = transform
@@ -113,63 +113,7 @@ class AVData(Dataset):
         return self.total_num
 
     def __getitem__(self, idx):
-        
-        # test_list = [
-        #     4614,
-        #     4247,
-        #     4103,
-        #     801,
-        #     4421,
-        #     4691,
-        #     5487,
-        #     6120,
-        #     6911,
-        #     6961,
-        #     8187,
-        #     8867,
-        #     8927,
-        #     9460,
-        #     10191,
-        #     13023,
-        #     13078,
-        #     14008,
-        #     14315,
-        #     15468,
-        #     16296,
-        #     16331,
-        #     17319,
-        #     17364,
-        #     18560,
-        #     19122,
-        #     20905,
-        #     20955,
-        #     22061,
-        #     22101,
-        #     25832,
-        #     26236,
-        #     26461,
-        #     26494,
-        #     27249,
-        #     27311,
-        #     28018,
-        #     29398,
-        #     29498,
-        #     29137,
-        #     32439,
-        #     34105,
-        #     34135,
-        #     36320,
-        #     36370,
-        #     37765,
-        #     38666,
-        #     39854,
-        #     40330,
-        #     40990
-        # ]
-        
-        # idx = random.choice(test_list)
-        # idx = 4614
-        
+
         file_idx = idx // 200
         sample_idx = idx % 200
         
