@@ -37,8 +37,7 @@ def main():
     torch.cuda.set_device(rank % num_gpus)
     dist.init_process_group(backend='nccl')
     assert rank == dist.get_rank()
-    world_size = dist.get_world_size()
-    
+    world_size = dist.get_world_size()  
     
     # Create Workdir
     time_stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
@@ -56,7 +55,8 @@ def main():
     # Create Data
     dataset_train = AVData('process_data/npy_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=2, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
+    BS = 2
+    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
     # print([(k, v.shape) for k, v in dataset_train[0].items()])
@@ -71,8 +71,12 @@ def main():
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[6, 8], gamma=0.1)
+    # optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
+    # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[6, 8], gamma=0.1)
+    
+    optimizer = optim.AdamW(model.parameters(), lr=1e-2)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
+    
     print_log('created optimizer.')
 
     # Create Criterion
@@ -80,7 +84,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 11):
+    for epoch in range(1, 17):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -90,7 +94,7 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-                                    
+
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
@@ -98,55 +102,47 @@ def main():
             traffic_veh_key_padding = batch['traffic_veh_key_padding'].cuda()
             
             output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, ego_action_data, traffic_veh_key_padding)
-            
+               
             candidates_BS = 801
-            candidates_action_list = np.arange(-5, 3.01, 0.01)
+            candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
             candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
             loss = torch.zeros(1,).type_as(ego_veh_data)
+            prob_list = []
             for j in range(len(output)):
                 expert_output = output[j]
-                
-                # candidates_action_list = []
-                # while len(candidates_action_list) < candidates_BS:
-                #     candidates_action = np.random.uniform(low=-5, high=3, size=(1,))[0]
-                #     if np.abs(candidates_action - ego_action_data[j].detach().cpu().numpy()) < 0.2:
-                #         continue
-                
-                #     candidates_action_list.append(candidates_action)
-                
-                # print(expert_action, candidates_action_list)
-                
-                # candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
-                # print(candidates_action.shape)
-                                
-                single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))
+
+                single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))         
                 single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_data[j], 0))
                 single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_track_data[j], 0))
                 single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
                                 
                 candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action, single_traffic_veh_key_padding)
-
+                
                 prob = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
-
+                prob_list.append(prob)
                 loss += -torch.log(prob)
-
-            loss = loss / len(batch)
-            avg_prob = torch.exp((-loss))
+                
+            loss = loss / BS
+            
+            prob_avg = torch.mean(torch.tensor(prob_list)).cuda()
+            prob_std = torch.std(torch.tensor(prob_list), unbiased=False).cuda()
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-                
+
             dist.all_reduce(loss.div_(world_size))
-            dist.all_reduce(avg_prob.div_(world_size))
+            dist.all_reduce(prob_avg.div_(world_size))
+            dist.all_reduce(prob_std.div_(world_size))
             
             current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
-            tb_avg_prob.write(avg_prob.data, (epoch - 1) * len(dataloader_train) + i)
+            tb_avg_prob.write(prob_avg.data, (epoch - 1) * len(dataloader_train) + i)
             tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%avg_prob}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%prob_avg} | avg_std: {"%.4f"%prob_std}')
+        
             
         lr_scheduler.step()
         

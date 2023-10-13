@@ -103,7 +103,7 @@ class AVData(Dataset):
         self.files = sorted(files, key=lambda x:int(x.split('_')[-1].split('.')[0]))
         last_file_np = np.load(self.files[-1], allow_pickle=True)
         self.total_num = (len(self.files) - 1) * 200 + len(last_file_np)
-        print_log(f'total num of data: {self.total_num}')
+        # print_log(f'total num of data: {self.total_num}')
         del last_file_np
         
         self.transform = transform
