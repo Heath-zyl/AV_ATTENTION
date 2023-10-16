@@ -2,12 +2,19 @@ import torch
 from data.train_data import AVData
 from model.carTrackTransformerEncoder import CarTrackTransformerEncoder
 from collections import OrderedDict
-import sys
 import numpy as np
+from tqdm import tqdm
+import sys
+torch.set_printoptions(16)
 
 
 def mapIdx(ts_num, traffic_id_list):
     return traffic_id_list[ts_num]
+
+def expand_dim_0(sz, tensor):
+    dst_shape = tensor.shape[1:]
+    tensor = tensor.expand(sz, *dst_shape)
+    return tensor
 
 
 def main(data_idx):
@@ -32,9 +39,9 @@ def main(data_idx):
     
     d_model = 64
     nhead = 8
-    num_layers = 6
+    num_layers = 1
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20231012_192806/epoch_12.pth', map_location='cpu')
+    weights = torch.load('workdir/20231015_154731/epoch_16.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -44,15 +51,28 @@ def main(data_idx):
     
     outs = model(ego_veh, traffic_veh, ego_future_path, ego_action)
     logit = torch.squeeze(outs[0], 1)
-    print(logit.shape)
-    weight_attention_list = outs[1]
+    weight_attention_list = outs[1][0][0]
     
     # print(logit)
-    # print(weight_attention_list)
-    # print([weight_attention.shape for weight_attention in weight_attention_list])
+    # print(weight_attention_list[0])
+    weight_attention = weight_attention_list[0]
+    # print(weight_attention)
+    # print([torch.unique(weight_attention.data) for weight_attention in weight_attention_list])
+    
+    sort_idx = torch.argsort(weight_attention_list[0], descending=True)
+    for si in sort_idx:
+        if si == 0:
+            print(f'cls({weight_attention[si]})', end=', ')
+        elif si == 1:
+            print(f'track({weight_attention[si]})', end=',' )
+        elif si == 2:
+            print(f'ego({weight_attention[si]})', end=', ')
+        else:
+            print(f'{vec_traffic_id_list[si-3]}({weight_attention[si]}))', end=', ')
+    print()
     
     # candidates
-    candidates_action_list = np.arange(-5, 3.01, 0.01)
+    candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
     candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action)
     candidates_BS = 801
     
@@ -68,22 +88,80 @@ def main(data_idx):
     print('='*20, 'res', '='*20)
     print(f'gt: {ego_action.data} | predict: {candidates_action_list[max_idx]}')
     
-    diff = torch.abs(ego_action.data - candidates_action_list[max_idx]) * 8
+    # diff = torch.abs(ego_action.data - candidates_action_list[max_idx])
     
-    print(f'diff: {torch.abs(ego_action.data - candidates_action_list[max_idx])} | {torch.abs(ego_action.data - candidates_action_list[max_idx]) * 8}')
+    print(f'diff: {torch.abs(ego_action.data - candidates_action_list[max_idx])} | {torch.abs(ego_action.data - candidates_action_list[max_idx]) * 4}')
 
-    return diff
 
-def expand_dim_0(sz, tensor):
-    dst_shape = tensor.shape[1:]
-    tensor = tensor.expand(sz, *dst_shape)
-    return tensor
+
+def test():
     
+    # Create model
+    d_model = 64
+    nhead = 8
+    num_layers = 1
+    model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
+    weights = torch.load('workdir/20231015_154731/epoch_16.pth', map_location='cpu')
+    
+    delete_module_weight = OrderedDict()
+    for k, v in weights.items():
+        delete_module_weight[k[7:]] = weights[k]
+    model.load_state_dict(delete_module_weight, strict=True)
+    model.eval()
+    model = model.cuda()
+    
+    # Create Data
+    dataset_train = AVData('process_data/npy_data/*.npy', test_mode=True)
+    # print(f'total num: {len(dataset_train)}')
+    
+    res, cnt = 0, 0
+    for data_idx in tqdm(range(0, len(dataset_train), 100)):
+        
+        data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
+        ego_veh, traffic_veh, ego_future_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_action']
+        
+        if traffic_veh.numel() == 0:
+            print(f'traffic_veh.numel() == 0: {data_idx}')
+            continue
+        
+        # print('************************************')
+        # print(f'frame_id: {frame_id}')
+        # print(f'ego_veg_id: {ego_veh_id}')
+        # print(f'vec_traffic_id_list({len(vec_traffic_id_list)}): {",".join(map(str, vec_traffic_id_list))}')
+        
+        # print('************************************')
+        ego_veh = torch.unsqueeze(ego_veh, 0)
+        traffic_veh = torch.unsqueeze(traffic_veh, 0)
+        ego_future_path = torch.unsqueeze(ego_future_path, 0)
+        ego_action = torch.unsqueeze(ego_action, 0)
+        
+        
+        # candidates
+        candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
+        candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action).cuda()
+        candidates_BS = 801
+        
+        single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh[0], 0)).cuda()       
+        single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh[0], 0)).cuda()
+        single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_path[0], 0)).cuda()
+        
+        candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
+        candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
+        
+        max_idx = torch.argmax(candidates_logit)
+        
+        diff = torch.abs(ego_action.data - candidates_action_list[max_idx]) * 4
+        
+        res += diff**2
+        cnt += 1
+        
+    rmse = (res / cnt) ** 0.5
+    print(f'final res: {rmse}')
+
+
 
 if __name__ == '__main__':
     
-    # main(int(sys.argv[1]))
+    main(int(sys.argv[1]))
     
-    res = []
-    for i in range(0, 1000, 502695):
-        res = 
+    # test()

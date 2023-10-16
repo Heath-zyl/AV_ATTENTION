@@ -69,9 +69,9 @@ class TransformerEncoderLayer(nn.Module):
         """
         
         if self.training:
-            src2 = self.self_attn(src, src, src, attn_mask=src_mask,
-                                key_padding_mask=src_key_padding_mask)[0]
-                        
+            src2, attention_weights = self.self_attn(src, src, src, attn_mask=src_mask,
+                                key_padding_mask=src_key_padding_mask)
+                                
             src = src + self.dropout1(src2)
             src = self.norm1(src)
             

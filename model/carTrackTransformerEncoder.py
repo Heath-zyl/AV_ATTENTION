@@ -29,7 +29,7 @@ class CarTrackTransformerEncoder(nn.Module):
         # self.linear_action_2 = nn.Linear(d_model//2, d_model)
 
         self.mlp = nn.Sequential(
-            nn.Linear(d_model+1, 100),
+            nn.Linear(d_model, 100),
             nn.ReLU(inplace=True),
             nn.Linear(100, 100),
             nn.ReLU(inplace=True),
@@ -67,7 +67,7 @@ class CarTrackTransformerEncoder(nn.Module):
             src_key_padding_mask[:, 3:] = traffic_veh_key_padding
             src_key_padding_mask = src_key_padding_mask.bool()
         else:
-            src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1] + 3).bool()
+            src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1] + 3).type_as(ego_veh_data).bool()
         
         cls_ebd = self.cls_ebd.expand(ego_veh_ebd.shape[0], 1, self.cls_ebd.shape[-1])
         ego_future_track_ebd = torch.unsqueeze(ego_future_track_ebd, dim=1)
@@ -86,7 +86,8 @@ class CarTrackTransformerEncoder(nn.Module):
             memory = self.transformer_encoder(cat_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
+            # mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
+            mlp_input = cls_out * ego_action_data
             out = self.mlp(mlp_input)
             return out
             
@@ -94,7 +95,8 @@ class CarTrackTransformerEncoder(nn.Module):
             memory, attentions_weights_list = self.transformer_encoder(cat_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
+            # mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
+            mlp_input = cls_out * ego_action_data
             out = self.mlp(mlp_input)
             return out, attentions_weights_list
             
