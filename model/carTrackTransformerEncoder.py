@@ -30,12 +30,6 @@ class CarTrackTransformerEncoder(nn.Module):
 
         self.mlp = nn.Sequential(
             nn.Linear(d_model, 100),
-            nn.ReLU(inplace=True),
-            nn.Linear(100, 100),
-            nn.ReLU(inplace=True),
-            nn.Linear(100, 100),
-            nn.ReLU(inplace=True),
-            nn.Linear(100, 100),
             nn.Sigmoid(),
             nn.Linear(100, 1),
         )

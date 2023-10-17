@@ -37,11 +37,11 @@ def main(data_idx):
     ego_future_path = torch.unsqueeze(ego_future_path, 0)
     ego_action = torch.unsqueeze(ego_action, 0)
     
-    d_model = 64
+    d_model = 256
     nhead = 8
-    num_layers = 1
+    num_layers = 4
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20231015_154731/epoch_16.pth', map_location='cpu')
+    weights = torch.load('workdir/20231016_152436/epoch_16.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -51,15 +51,17 @@ def main(data_idx):
     
     outs = model(ego_veh, traffic_veh, ego_future_path, ego_action)
     logit = torch.squeeze(outs[0], 1)
-    weight_attention_list = outs[1][0][0]
+    
+    trans_layer = 1
+    # outs[1] # (num_layers, 1, num_traffic+3)
+    weight_attention_list = outs[1][trans_layer][0]
     
     # print(logit)
     # print(weight_attention_list[0])
     weight_attention = weight_attention_list[0]
-    # print(weight_attention)
     # print([torch.unique(weight_attention.data) for weight_attention in weight_attention_list])
     
-    sort_idx = torch.argsort(weight_attention_list[0], descending=True)
+    sort_idx = torch.argsort(weight_attention, descending=True)
     for si in sort_idx:
         if si == 0:
             print(f'cls({weight_attention[si]})', end=', ')
@@ -97,11 +99,11 @@ def main(data_idx):
 def test():
     
     # Create model
-    d_model = 64
+    d_model = 256
     nhead = 8
-    num_layers = 1
+    num_layers = 4
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20231015_154731/epoch_16.pth', map_location='cpu')
+    weights = torch.load('workdir/20231016_152436/epoch_16.pth', map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():

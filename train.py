@@ -63,9 +63,9 @@ def main():
     # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
-    d_model = 64
+    d_model = 256
     nhead = 8
-    num_layers = 1
+    num_layers = 4
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[rank], output_device=rank, broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
@@ -107,7 +107,7 @@ def main():
             candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
             candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
             loss = torch.zeros(1,).type_as(ego_veh_data)
-            prob_list = []
+            ratio_list = []
             for j in range(len(output)):
                 expert_output = output[j]
 
@@ -118,30 +118,30 @@ def main():
                                 
                 candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action, single_traffic_veh_key_padding)
                 
-                prob = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
-                prob_list.append(prob)
-                loss += -torch.log(prob)
+                ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
+                ratio_list.append(ratio)
+                loss += -torch.log(ratio)
                 
             loss = loss / BS
             
-            prob_avg = torch.mean(torch.tensor(prob_list)).cuda()
-            prob_std = torch.std(torch.tensor(prob_list), unbiased=False).cuda()
+            ratio_avg = torch.mean(torch.tensor(ratio_list)).cuda()
+            ratio_std = torch.std(torch.tensor(ratio_list), unbiased=False).cuda()
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             dist.all_reduce(loss.div_(world_size))
-            dist.all_reduce(prob_avg.div_(world_size))
-            dist.all_reduce(prob_std.div_(world_size))
+            dist.all_reduce(ratio_avg.div_(world_size))
+            dist.all_reduce(ratio_std.div_(world_size))
             
             current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
-            tb_avg_prob.write(prob_avg.data, (epoch - 1) * len(dataloader_train) + i)
+            tb_avg_prob.write(ratio_avg.data, (epoch - 1) * len(dataloader_train) + i)
             tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%prob_avg} | avg_std: {"%.4f"%prob_std}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%ratio_avg} | avg_std: {"%.4f"%ratio_std}')
         
             
         lr_scheduler.step()
