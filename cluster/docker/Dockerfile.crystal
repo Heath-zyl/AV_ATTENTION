@@ -1,0 +1,17 @@
+FROM registry.aibee.cn/aibee/crystal/lab:0.3
+
+ADD ./ /opt/cluster
+
+RUN mkdir -p /root/.kube && cp /opt/cluster/kube.config /root/.kube/config
+
+RUN pip install  -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    Jinja2 \
+    typing_inspect \
+    fsspec \
+    kubernetes \
+    ConfigArgParse
+
+RUN pip install  ray[default]==1.13.0  -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+ENV PYTHONPATH=/workspace/cluster/
+ENV PATH=/workspace/cluster/bin:$PATH

@@ -1,0 +1,9 @@
+
+kubectl -n {{ namespace }} get jobs
+kubectl -n {{ namespace }} delete job {{ job_name }}
+
+kubectl -n {{ namespace }} get pods 
+kubectl -n {{ namespace }} logs -f {{ pod_name }}
+kubectl -n {{ namespace }} describe pod {{ pod_name }}
+kubectl -n {{ namespace }} exec -it {{ pod_name }} -- bash  
+

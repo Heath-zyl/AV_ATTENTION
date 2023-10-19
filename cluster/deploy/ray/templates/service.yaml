@@ -1,0 +1,23 @@
+# Ray head node service, allowing worker pods to discover the head node.
+apiVersion: v1
+kind: Service
+metadata:
+  # namespace: default
+  name: {{ .Release.Name }}-ray-head
+spec:
+  type: NodePort
+  ports:
+    - name: client
+      port: 10001
+      targetPort: 10001
+      nodePort: 32001
+    - name: dashboard
+      port: 8265
+      targetPort: 8265
+      nodePort: 32002
+    - name: ray-serve
+      port: 8000
+      targetPort: 8000
+      nodePort: 32003
+  selector:
+    cluster.ray.io/component: {{ .Release.Name }}-ray-head

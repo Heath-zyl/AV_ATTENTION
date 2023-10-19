@@ -33,12 +33,13 @@ def main():
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method('spawn')
     rank = int(os.environ['RANK'])
+    print(rank)
     num_gpus = torch.cuda.device_count()
     torch.cuda.set_device(rank % num_gpus)
     dist.init_process_group(backend='nccl')
     assert rank == dist.get_rank()
     world_size = dist.get_world_size()  
-    
+
     # Create Workdir
     time_stamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     parser.workdir = os.path.join(parser.workdir, time_stamp)
@@ -53,10 +54,10 @@ def main():
     print_log(f'created tensorboard.')
     
     # Create Data
-    dataset_train = AVData('process_data/npy_data/*.npy')
+    dataset_train = AVData('/face/ylzhang/tirl_data/npy_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    BS = 2
-    dataloader_train = DataLoader(dataset_train, num_workers=2, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
+    BS = 1
+    dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
     # print([(k, v.shape) for k, v in dataset_train[0].items()])
@@ -67,12 +68,12 @@ def main():
     nhead = 8
     num_layers = 3
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
-    model = DDP(model, device_ids=[rank], output_device=rank, broadcast_buffers=False, find_unused_parameters=True)
+    model = DDP(model, device_ids=[int(os.environ['LOCAL_RANK'])], output_device=[int(os.environ['LOCAL_RANK'])], broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[6, 8], gamma=0.1)
+    optimizer = optim.SGD(model.parameters(), lr=4e-2, momentum=0.9, weight_decay=0.0001)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[24, 33], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
@@ -84,7 +85,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 17):
+    for epoch in range(1, 37):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -121,19 +122,25 @@ def main():
                 ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
                 ratio_list.append(ratio)
                 loss += -torch.log(ratio)
-                
-            loss = loss / BS
             
-            ratio_avg = torch.mean(torch.tensor(ratio_list)).cuda()
-            ratio_std = torch.std(torch.tensor(ratio_list), unbiased=False).cuda()
+            
+            dist.all_reduce(loss.div_(world_size * BS))
+            
+            ratio_avg = torch.sum(torch.tensor(ratio_list)).cuda()
+            dist.all_reduce(ratio_avg.div_(world_size * BS))
+            
+            ratio_std = torch.sum(torch.tensor([(r - ratio_avg)**2 for r in ratio_list])).cuda()
+            dist.all_reduce(ratio_std.div_(world_size * BS).pow_(0.5))
+            
+            # ratio_std = torch.std(torch.tensor(ratio_list), unbiased=False).cuda()
+            # print((ratio_std, world_size, ratio_list))
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            dist.all_reduce(loss.div_(world_size))
-            dist.all_reduce(ratio_avg.div_(world_size))
-            dist.all_reduce(ratio_std.div_(world_size))
+            # dist.all_reduce(ratio_sum.div_(world_size * BS))
+            # dist.all_reduce(ratio_std.div_(world_size))
             
             current_lr = optimizer.param_groups[0]['lr']
             tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
@@ -141,7 +148,7 @@ def main():
             tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | avg_prob: {"%.4f"%ratio_avg} | avg_std: {"%.4f"%ratio_std}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | ratio_avg: {"%.4f"%ratio_avg} | ratio_std: {"%.4f"%ratio_std}')
         
             
         lr_scheduler.step()

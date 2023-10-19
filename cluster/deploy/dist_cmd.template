@@ -1,0 +1,12 @@
+
+kubectl -n {{ namespace }} get vcjob
+kubectl -n {{ namespace }} delete vcjob {{ job_name }}
+
+kubectl -n {{ namespace }} get podgroup
+kubectl -n {{ namespace }} get queue
+
+kubectl -n {{ namespace }} get pods
+kubectl -n {{ namespace }} logs -f {{ pod_name }}
+kubectl -n {{ namespace }} describe pod {{ pod_name }}
+kubectl -n {{ namespace }} exec -it {{ pod_name }} -- bash  
+

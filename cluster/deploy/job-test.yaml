@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sli-ai-test
+spec:
+  template:
+    spec:
+      containers:
+      - name: sli-ai-test
+        image: registry.aibee.cn/aibee/crystal/lab:0.2
+        command:
+        - "sh"
+        - "-c"
+        - "nvidia-smi && ls /face && sleep 1000 || exit 1"
+
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+            # cpu: "6000m"
+            # memory: "10Gi"
+          requests:
+            nvidia.com/gpu: "8"
+            # cpu: "5000m"
+            # memory: "8Gi"
+
+        volumeMounts:
+        - mountPath: /face
+          name: face
+        - mountPath: /training
+          name: training
+        - mountPath: /workspace
+          name: workspace
+
+        workingDir: /workspace
+
+      initContainers:
+      - command:
+        - "sh"
+        - "-c"
+        - "cp /NGC-DL-CONTAINER-LICENSE /workspace/"
+        image: registry.aibee.cn/aibee/crystal/lab:0.2
+        imagePullPolicy: Always
+        name: sli-ai-test-init
+        volumeMounts:
+        - mountPath: "/workspace"
+          name: workspace
+        workingDir: "/workspace"
+
+      restartPolicy: Never
+      nodeSelector:
+        gpu: "true"
+      
+      volumes:
+      - name: face
+        hostPath:
+          path: /face
+      - name: training
+        hostPath:
+          path: /training
+      - emptyDir: {}
+        name: workspace
+
+
+  backoffLimit: 1

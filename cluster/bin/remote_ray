@@ -1,0 +1,2 @@
+#/bin/bash
+ray $@ --address http://172.16.10.29:32002

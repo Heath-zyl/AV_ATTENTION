@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ job_name }}
+  namespace: {{ namespace }}
+spec:
+  template:
+    spec:
+      containers:
+      - name: {{ job_name }}
+        image: {{ base_image }}
+        command:
+        - "sh"
+        - "-c"
+        - "nvidia-smi && ls /face && {{ command }}"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+            # cpu: "6000m"
+            # memory: "10Gi"
+          requests:
+            nvidia.com/gpu: "8"
+            # cpu: "5000m"
+            # memory: "8Gi"
+
+        volumeMounts:
+        - mountPath: /face
+          name: face
+        - mountPath: /training
+          name: training
+        - mountPath: /workspace
+          name: workspace
+        - mountPath: /dev/shm
+          name: dshm
+
+        workingDir: /workspace
+
+      initContainers:
+      - command:
+        - "sh"
+        - "-c"
+        - "cp /workspace/* /temp -rf"
+        image: {{ init_image }}
+        imagePullPolicy: Always
+        name: {{ init_name }}-init
+        volumeMounts:
+        - mountPath: "/temp"
+          name: workspace
+        workingDir: "/workspace"
+
+      restartPolicy: Never
+      nodeSelector:
+        gpu: "true"
+      
+      volumes:
+      - name: face
+        hostPath:
+          path: /face
+      - name: training
+        hostPath:
+          path: /training
+      - emptyDir: {}
+        name: workspace
+      - name: dshm
+        emptyDir:
+          medium: Memory
+
+  backoffLimit: 0

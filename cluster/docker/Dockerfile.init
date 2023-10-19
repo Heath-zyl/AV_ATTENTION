@@ -1,0 +1,3 @@
+FROM registry.aibee.cn/aibee/busybox:latest
+
+ADD scripts/wait_service.sh /root

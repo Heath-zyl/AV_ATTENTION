@@ -1,0 +1,4 @@
+#/bin/bash
+SHDIR="$(dirname "${BASH_SOURCE[0]}")"
+chmod +x ${SHDIR}/kubectl_bin
+${SHDIR}/kubectl_bin --kubeconfig=${SHDIR}/../kube.config $@
