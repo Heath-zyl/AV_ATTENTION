@@ -61,3 +61,4 @@ def save_model(dst_dir, epoch, model):
     dst_path = os.path.join(dst_dir, f'epoch_{epoch}.pth')
     print_log(f'save model to {dst_path}.')
     torch.save(model.state_dict(), dst_path)
+    return dst_path

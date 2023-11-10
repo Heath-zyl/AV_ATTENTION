@@ -8,7 +8,7 @@ def collater(data):
     ego_veh_data = torch.stack(tuple(d['ego_veh'] for d in data))
     ego_action_data = torch.stack(tuple(d['ego_action'] for d in data))
     ego_future_track_data = torch.stack(tuple(d['ego_future_path'] for d in data))    
-    
+    ego_history_track_data = torch.stack(tuple(d['ego_history_path'] for d in data))
         
     max_len_traffic_veh = max(tuple(d['traffic_veh_list'].shape[0] for d in data))
     
@@ -24,6 +24,7 @@ def collater(data):
     sample['ego_veh_data'] = ego_veh_data
     sample['ego_action_data'] = ego_action_data
     sample['ego_future_track_data'] = ego_future_track_data
+    sample['ego_history_track_data'] = ego_history_track_data
     sample['traffic_veh_data'] = traffic_veh_data
     sample['traffic_veh_key_padding'] = traffic_veh_key_padding
 

@@ -12,25 +12,27 @@ class CarTrackTransformerEncoder(nn.Module):
     def __init__(self, d_model=64, nhead=8, num_layers=1):
         super(CarTrackTransformerEncoder, self).__init__()
         encoder_layer = TransformerEncoderLayer(d_model=d_model, nhead=nhead)
+        
         self.transformer_encoder = TransformerEncoder(encoder_layer, num_layers=num_layers)
-                
-        # self.linear_ego_ft_1 = nn.Linear(300, 256)
-        # self.linear_ego_ft_2 = nn.Linear(256, 128)
-        # self.linear_ego_ft_3 = nn.Linear(128, d_model)
-        
-        # self.linear_ego_veh_1 = nn.Linear(5, 16)
-        # self.linear_ego_veh_2 = nn.Linear(16, d_model)
-        
-        # self.linear_traffic_veh = nn.Linear(5, d_model)
 
-        # self.linear_action_1 = nn.Linear(1, d_model//2)
-        # self.linear_action_2 = nn.Linear(d_model//2, d_model)
-
+        self.cls_ebd = nn.Parameter(torch.zeros(1, 1, d_model), requires_grad=True)
 
         self.mlp_ego = nn.Sequential(
-            nn.Linear(305, 300),
+            nn.Linear(5, d_model//2),
             nn.ReLU(),
-            nn.Linear(300, d_model)
+            nn.Linear(d_model//2, d_model)
+        )
+
+        self.mlp_future = nn.Sequential(
+            nn.Linear(300, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model)
+        )
+
+        self.mlp_history = nn.Sequential(
+            nn.Linear(30, d_model//2),
+            nn.ReLU(),
+            nn.Linear(d_model//2, d_model)
         )
 
         self.mlp_traff = nn.Sequential(
@@ -55,38 +57,42 @@ class CarTrackTransformerEncoder(nn.Module):
                 xavier_uniform_(p)
 
         
-    def forward(self, ego_veh_data, traffic_veh_data, ego_future_track_data, ego_action_data, traffic_veh_key_padding=None):
+    def forward(self, ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding=None):
+
+        # mlp to ego
+        ego_ebd = self.mlp_ego(ego_veh_data)
         
-        
-        
-        # # Process ego
+        # mlp to future_track
         ego_future_track_data = ego_future_track_data.reshape(ego_future_track_data.shape[0], -1)
-        ego_action_data = torch.unsqueeze(ego_action_data, 1)
+        future_ebd = self.mlp_future(ego_future_track_data)
         
-        ego_input = torch.cat([ego_veh_data, ego_future_track_data], dim=1)
-        ego_ebd = self.mlp_ego(ego_input) * ego_action_data
-        ego_ebd = torch.unsqueeze(ego_ebd, dim=1)
+        # mlp to history_track
+        ego_history_track_data = ego_history_track_data.reshape(ego_history_track_data.shape[0], -1)
+        history_ebd = self.mlp_history(ego_history_track_data)
         
         # Process traffic_veh and corresponding mask
         traffic_ebd = self.mlp_traff(traffic_veh_data)
         
         # Input Ebd
-        input_ebd = torch.cat([ego_ebd, traffic_ebd], dim=1).transpose(1, 0)
+        cls_ebd = self.cls_ebd.expand(ego_ebd.shape[0], 1, self.cls_ebd.shape[-1])
+        ego_ebd = torch.unsqueeze(ego_ebd, dim=1)
+        future_ebd = torch.unsqueeze(future_ebd, dim=1)
+        history_ebd = torch.unsqueeze(history_ebd, dim=1)
+        input_ebd = torch.cat([cls_ebd, ego_ebd, future_ebd, history_ebd, traffic_ebd], dim=1).transpose(1, 0)
         
         if traffic_veh_key_padding is not None:
-            src_key_padding_mask = torch.zeros(traffic_veh_key_padding.shape[0], traffic_veh_key_padding.shape[1]+1).type_as(traffic_veh_key_padding)
-            src_key_padding_mask[:, 1:] = traffic_veh_key_padding
+            src_key_padding_mask = torch.zeros(traffic_veh_key_padding.shape[0], traffic_veh_key_padding.shape[1]+4).type_as(traffic_veh_key_padding)
+            src_key_padding_mask[:, 4:] = traffic_veh_key_padding
             src_key_padding_mask = src_key_padding_mask.bool()
         else:
-            src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1] + 1).type_as(ego_veh_data).bool()
+            src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1]+4).type_as(ego_veh_data).bool()
         
         
         if self.training:
             memory = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            # mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
-            mlp_input = cls_out
+            mlp_input = cls_out * ego_action_data
             out = self.mlp_tail(mlp_input)
             return out
             
@@ -94,8 +100,7 @@ class CarTrackTransformerEncoder(nn.Module):
             memory, attentions_weights_list = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            # mlp_input = torch.cat((cls_out, ego_action_data), dim=1)
-            mlp_input = cls_out
+            mlp_input = cls_out * ego_action_data
             out = self.mlp_tail(mlp_input)
             return out, attentions_weights_list
             

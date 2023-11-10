@@ -18,6 +18,7 @@ def transform(sample):
     ego_x = sample['ego_veh'][1]
     ego_y = sample['ego_veh'][2]
     ego_yaw = sample['ego_veh'][5]
+    
     # 转换主车
     x = sample['ego_veh'][1]
     y = sample['ego_veh'][2]
@@ -33,8 +34,13 @@ def transform(sample):
     relative_vy = -vx * np.sin(ego_yaw) + vy * np.cos(ego_yaw)
     relative_yaw = yaw - ego_yaw
 
-    new_sample['ego_veh'] = [relative_x / nor_x, relative_y / nor_y, relative_vx / nor_vx, relative_vy / nor_vy,
-                             relative_yaw / nor_yaw]
+    x_min = 972.5
+    x_max = 1089.4
+    y_min = 965.3
+    y_max = 1034.6
+    new_sample['ego_veh'] = [(ego_x - x_min)/(x_max - x_min), (ego_y - y_min)/(y_max - y_min), relative_vx / nor_vx, 
+                         relative_vy / nor_vy, ego_yaw/nor_yaw]
+
 
     # 转换交通车
     new_sample['traffic_veh_list'] = []
@@ -58,6 +64,7 @@ def transform(sample):
 
         new_sample['traffic_veh_list'].append(new_traffic_veh)
 
+
     # 转换未来轨迹
     new_sample['ego_future_path'] = []
     for points in sample['ego_future_path']:
@@ -75,8 +82,28 @@ def transform(sample):
 
         new_sample['ego_future_path'].append(new_point)
 
-    # 加速度
+
+    # 转换历史轨迹
+    new_sample['ego_history_path'] = []
+    for points in sample['ego_history_path']:
+        x = points[0]
+        y = points[1]
+        yaw = points[2]
+
+        x_rel = x - ego_x
+        y_rel = y - ego_y
+        relative_x = x_rel * np.cos(ego_yaw) + y_rel * np.sin(ego_yaw)
+        relative_y = -x_rel * np.sin(ego_yaw) + y_rel * np.cos(ego_yaw)
+        relative_yaw = yaw - ego_yaw
+
+        new_point = [relative_x / nor_x, relative_y / nor_y, relative_yaw / nor_yaw]
+
+        new_sample['ego_history_path'].append(new_point)
+
+
+    # 转换加速度
     new_sample['ego_action'] = ((sample['ego_action'] + 1) / 4).astype(np.float32)
+
     
     # ToTensor
     for key in new_sample.keys():
@@ -85,6 +112,7 @@ def transform(sample):
         else:
             new_sample[key] = torch.Tensor(new_sample[key])
 
+
     # 主车未来轨迹， 取前100个轨迹点，如果不够100，则以最后一个实际轨迹点补充到100
     if new_sample['ego_future_path'].shape[0] >= 100:
         new_sample['ego_future_path'] = new_sample['ego_future_path'][:100]
@@ -92,6 +120,7 @@ def transform(sample):
         repeat_times = 100 - new_sample['ego_future_path'].shape[0]
         append_value = new_sample['ego_future_path'][-1][None, :].repeat(repeat_times, 1)
         new_sample['ego_future_path'] = torch.cat((new_sample['ego_future_path'], append_value), axis=0)
+    
     
     return new_sample
 

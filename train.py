@@ -15,6 +15,7 @@ from master_ops import print_log, make_dirs, master_only, TB, save_model
 from torch.utils.data import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import numpy as np
+from inference import test
 
 
 def parse(args=None):
@@ -33,7 +34,6 @@ def main():
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method('spawn')
     rank = int(os.environ['RANK'])
-    print(rank)
     num_gpus = torch.cuda.device_count()
     torch.cuda.set_device(rank % num_gpus)
     dist.init_process_group(backend='nccl')
@@ -48,13 +48,15 @@ def main():
     print_log(f'created workdir {parser.workdir}.')
     
     # Create Tensorboard
-    tb_loss = TB(workdir=parser.workdir, title='loss')
-    tb_lr = TB(workdir=parser.workdir, title='lr')
-    tb_avg_prob = TB(workdir=parser.workdir, title='avg_prob')
+    if rank == 0:
+        tb_loss = TB(workdir=parser.workdir, title='loss')
+        tb_lr = TB(workdir=parser.workdir, title='lr')
+        tb_avg_prob = TB(workdir=parser.workdir, title='avg_prob')
+        tb_rmse = TB(workdir=parser.workdir, title='rmse')
     print_log(f'created tensorboard.')
     
     # Create Data
-    dataset_train = AVData('/face/ylzhang/tirl_data/npy_data/*.npy')
+    dataset_train = AVData('/face/ylzhang/tirl_data/2/processed_data/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
     BS = 1
     dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
@@ -73,7 +75,7 @@ def main():
 
     # Create Optimizer
     optimizer = optim.SGD(model.parameters(), lr=4e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[24, 33], gamma=0.1)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
@@ -85,7 +87,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 37):
+    for epoch in range(1, 51):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -95,14 +97,15 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-
+            
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
+            ego_history_track_data = batch['ego_history_track_data'].cuda()
             ego_action_data = batch['ego_action_data'].cuda()
             traffic_veh_key_padding = batch['traffic_veh_key_padding'].cuda()
             
-            output = model(ego_veh_data, traffic_veh_data, ego_future_track_data, ego_action_data, traffic_veh_key_padding)
+            output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding)
                
             candidates_BS = 801
             candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
@@ -115,9 +118,10 @@ def main():
                 single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))         
                 single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_data[j], 0))
                 single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_track_data[j], 0))
+                single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_track_data[j], 0))
                 single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
                                 
-                candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action, single_traffic_veh_key_padding)
+                candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action, single_traffic_veh_key_padding)
                 
                 ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
                 ratio_list.append(ratio)
@@ -143,9 +147,10 @@ def main():
             # dist.all_reduce(ratio_std.div_(world_size))
             
             current_lr = optimizer.param_groups[0]['lr']
-            tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
-            tb_avg_prob.write(ratio_avg.data, (epoch - 1) * len(dataloader_train) + i)
-            tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
+            if rank == 0:
+                tb_loss.write(loss.data, (epoch - 1) * len(dataloader_train) + i)
+                tb_avg_prob.write(ratio_avg.data, (epoch - 1) * len(dataloader_train) + i)
+                tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
             if i % 10 == 0:
                 print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | ratio_avg: {"%.4f"%ratio_avg} | ratio_std: {"%.4f"%ratio_std}')
@@ -153,10 +158,17 @@ def main():
             
         lr_scheduler.step()
         
-        save_model(parser.workdir, epoch, model)
- 
-    tb_loss.close()
-
+        saved_path = save_model(parser.workdir, epoch, model)
+        if rank == 0:
+            rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path)
+            print_log(f'rmse: {rmse}')
+            tb_rmse.write(rmse, epoch-1)
+        
+    if rank == 0:
+        tb_loss.close()
+        tb_lr.close()
+        tb_avg_prob.close()
+        tb_rmse.close()
 
 def expand_dim_0(sz, tensor):
     dst_shape = tensor.shape[1:]

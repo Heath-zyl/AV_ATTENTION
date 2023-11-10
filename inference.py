@@ -7,6 +7,12 @@ from tqdm import tqdm
 import sys
 torch.set_printoptions(16)
 
+MODEL_PATH = '/face/ylzhang/tirl_workdir/20231023_082248/epoch_50.pth'
+DATA_PATH = '/face/ylzhang/tirl_data/2/processed_data/*.npy'
+D_MODEL = 256
+NHEAD = 8
+NUM_LAYERS = 3
+
 
 def mapIdx(ts_num, traffic_id_list):
     return traffic_id_list[ts_num]
@@ -20,11 +26,13 @@ def expand_dim_0(sz, tensor):
 def main(data_idx):
     
     # Create Data
-    dataset_train = AVData('process_data/npy_data/*.npy', test_mode=True)
+    dataset_train = AVData(DATA_PATH, test_mode=True)
     print(f'total num: {len(dataset_train)}')
     
     data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
-    ego_veh, traffic_veh, ego_future_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_action']
+    # ego_veh, traffic_veh, ego_future_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_action']
+    ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
+
     
     print('************************************')
     print(f'frame_id: {frame_id}')
@@ -37,11 +45,11 @@ def main(data_idx):
     ego_future_path = torch.unsqueeze(ego_future_path, 0)
     ego_action = torch.unsqueeze(ego_action, 0)
     
-    d_model = 256
-    nhead = 8
-    num_layers = 4
+    d_model = D_MODEL
+    nhead = NHEAD
+    num_layers = NUM_LAYERS
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20231016_152436/epoch_16.pth', map_location='cpu')
+    weights = torch.load(MODEL_PATH, map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -81,8 +89,10 @@ def main(data_idx):
     single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh[0], 0))         
     single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh[0], 0))
     single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_path[0], 0))
+    single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_path)).cuda()
     
-    candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
+    # candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
+    candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action)
     candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
     
     max_idx = torch.argmax(candidates_logit)
@@ -96,14 +106,14 @@ def main(data_idx):
 
 
 
-def test():
+def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_PATH, data_path=DATA_PATH):
     
     # Create model
-    d_model = 256
-    nhead = 8
-    num_layers = 4
+    # d_model = d_model
+    # nhead = nhead
+    # num_layers = num_layers
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
-    weights = torch.load('workdir/20231016_152436/epoch_16.pth', map_location='cpu')
+    weights = torch.load(model_path, map_location='cpu')
     
     delete_module_weight = OrderedDict()
     for k, v in weights.items():
@@ -113,15 +123,15 @@ def test():
     model = model.cuda()
     
     # Create Data
-    dataset_train = AVData('process_data/npy_data/*.npy', test_mode=True)
+    dataset_train = AVData(data_path, test_mode=True)
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
     for data_idx in tqdm(range(0, len(dataset_train), 100)):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
-        ego_veh, traffic_veh, ego_future_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_action']
-        
+        ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
+                
         if traffic_veh.numel() == 0:
             print(f'traffic_veh.numel() == 0: {data_idx}')
             continue
@@ -135,8 +145,8 @@ def test():
         ego_veh = torch.unsqueeze(ego_veh, 0)
         traffic_veh = torch.unsqueeze(traffic_veh, 0)
         ego_future_path = torch.unsqueeze(ego_future_path, 0)
+        ego_history_path = torch.unsqueeze(ego_history_path, 0)
         ego_action = torch.unsqueeze(ego_action, 0)
-        
         
         # candidates
         candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
@@ -146,8 +156,10 @@ def test():
         single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh[0], 0)).cuda()       
         single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh[0], 0)).cuda()
         single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_path[0], 0)).cuda()
+        single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_path[0], 0)).cuda()
         
-        candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
+        # candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
+        candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action)
         candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
         
         max_idx = torch.argmax(candidates_logit)
@@ -158,12 +170,12 @@ def test():
         cnt += 1
         
     rmse = (res / cnt) ** 0.5
-    print(f'final res: {rmse}')
-
+    # print(f'final res: {rmse}')
+    return rmse
 
 
 if __name__ == '__main__':
     
-    main(int(sys.argv[1]))
+    # main(int(sys.argv[1]))
     
-    # test()
+    print(f'final res: {test()}')
