@@ -68,7 +68,7 @@ def main():
     # Create Model
     d_model = 256
     nhead = 8
-    num_layers = 3
+    num_layers = 8
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[int(os.environ['LOCAL_RANK'])], output_device=[int(os.environ['LOCAL_RANK'])], broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
