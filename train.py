@@ -66,16 +66,17 @@ def main():
     # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
-    d_model = 256
-    nhead = 8
-    num_layers = 3
+    d_model = 32
+    nhead = 4
+    num_layers = 1
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[int(os.environ['LOCAL_RANK'])], output_device=[int(os.environ['LOCAL_RANK'])], broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=4e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
+    # optimizer = optim.SGD(model.parameters(), lr=4e-3, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
@@ -87,7 +88,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 51):
+    for epoch in range(1, 101):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -152,14 +153,14 @@ def main():
                 tb_avg_prob.write(ratio_avg.data, (epoch - 1) * len(dataloader_train) + i)
                 tb_lr.write(current_lr, (epoch - 1) * len(dataloader_train) + i)
             
-            if i % 10 == 0:
+            if i % 1 == 0:
                 print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data} | ratio_avg: {"%.4f"%ratio_avg} | ratio_std: {"%.4f"%ratio_std}')
         
             
         lr_scheduler.step()
         
         saved_path = save_model(parser.workdir, epoch, model)
-        if rank == 0:
+        if rank == 0 and epoch % 5 == 0:
             rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path)
             print_log(f'rmse: {rmse}')
             tb_rmse.write(rmse, epoch-1)

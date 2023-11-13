@@ -7,11 +7,11 @@ from tqdm import tqdm
 import sys
 torch.set_printoptions(16)
 
-MODEL_PATH = '/face/ylzhang/tirl_workdir/20231023_082248/epoch_50.pth'
+MODEL_PATH = 'workdir/20231113_190228/epoch_100.pth'
 DATA_PATH = '/face/ylzhang/tirl_data/3/*.npy'
 D_MODEL = 256
 NHEAD = 8
-NUM_LAYERS = 3
+NUM_LAYERS = 8
 
 
 def mapIdx(ts_num, traffic_id_list):
@@ -43,6 +43,7 @@ def main(data_idx):
     ego_veh = torch.unsqueeze(ego_veh, 0)
     traffic_veh = torch.unsqueeze(traffic_veh, 0)
     ego_future_path = torch.unsqueeze(ego_future_path, 0)
+    ego_history_path = torch.unsqueeze(ego_history_path, 0)
     ego_action = torch.unsqueeze(ego_action, 0)
     
     d_model = D_MODEL
@@ -57,7 +58,8 @@ def main(data_idx):
     model.load_state_dict(delete_module_weight, strict=True)
     model.eval()
     
-    outs = model(ego_veh, traffic_veh, ego_future_path, ego_action)
+    # outs = model(ego_veh, traffic_veh, ego_future_path, ego_action)
+    outs = model(ego_veh, ego_future_path, ego_history_path, traffic_veh, ego_action)
     logit = torch.squeeze(outs[0], 1)
     
     trans_layer = 1
@@ -69,17 +71,17 @@ def main(data_idx):
     weight_attention = weight_attention_list[0]
     # print([torch.unique(weight_attention.data) for weight_attention in weight_attention_list])
     
-    sort_idx = torch.argsort(weight_attention, descending=True)
-    for si in sort_idx:
-        if si == 0:
-            print(f'cls({weight_attention[si]})', end=', ')
-        elif si == 1:
-            print(f'track({weight_attention[si]})', end=',' )
-        elif si == 2:
-            print(f'ego({weight_attention[si]})', end=', ')
-        else:
-            print(f'{vec_traffic_id_list[si-3]}({weight_attention[si]}))', end=', ')
-    print()
+    # sort_idx = torch.argsort(weight_attention, descending=True)
+    # for si in sort_idx:
+    #     if si == 0:
+    #         print(f'cls({weight_attention[si]})', end=', ')
+    #     elif si == 1:
+    #         print(f'track({weight_attention[si]})', end=',' )
+    #     elif si == 2:
+    #         print(f'ego({weight_attention[si]})', end=', ')
+    #     else:
+    #         print(f'{vec_traffic_id_list[si-3]}({weight_attention[si]}))', end=', ')
+    # print()
     
     # candidates
     candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
@@ -89,10 +91,11 @@ def main(data_idx):
     single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh[0], 0))         
     single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh[0], 0))
     single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_path[0], 0))
-    single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_path)).cuda()
+    single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_path[0], 0))
     
     # candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
     candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action)
+
     candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
     
     max_idx = torch.argmax(candidates_logit)
@@ -127,7 +130,7 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train), 30)):
+    for data_idx in tqdm(range(0, len(dataset_train))):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
@@ -164,6 +167,8 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
         
         max_idx = torch.argmax(candidates_logit)
         
+        print(candidates_action_list[max_idx])
+        
         diff = torch.abs(ego_action.data - candidates_action_list[max_idx]) * 4
         
         res += diff**2
@@ -176,6 +181,9 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
 
 if __name__ == '__main__':
     
+    for i in range(32):
+        main(i)
+    
     # main(int(sys.argv[1]))
     
-    print(f'final res: {test()}')
+    # print(f'final res: {test()}')

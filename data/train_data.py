@@ -129,10 +129,18 @@ class AVData(Dataset):
     def __init__(self, path, transform=transform, test_mode=False):
         files = glob(path)
         
-        self.data_all = np.zeros(0)
+        data_all = np.zeros(0)
         for file in files:
             data_temp = np.load(file, allow_pickle=True)
-            self.data_all = np.concatenate((self.data_all, data_temp))
+            data_all = np.concatenate((data_all, data_temp))
+        
+        # index: 662~693
+        for i in range(len(data_all)-1, -1, -1):
+            if data_all[i]['frame_id'] in list(range(1, 33)) and data_all[i]['ego_veh'][0] == 9:
+                continue
+            data_all = np.delete(data_all, i)
+        
+        self.data_all = data_all
         
         self.transform = transform
         self.test_mode = test_mode
