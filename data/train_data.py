@@ -129,25 +129,20 @@ class AVData(Dataset):
     def __init__(self, path, transform=transform, test_mode=False):
         files = glob(path)
         
-        self.files = sorted(files, key=lambda x:int(x.split('_')[-1].split('.')[0]))
-        last_file_np = np.load(self.files[-1], allow_pickle=True)
-        self.total_num = (len(self.files) - 1) * 200 + len(last_file_np)
-        # print_log(f'total num of data: {self.total_num}')
-        del last_file_np
+        self.data_all = np.zeros(0)
+        for file in files:
+            data_temp = np.load(file, allow_pickle=True)
+            self.data_all = np.concatenate((self.data_all, data_temp))
         
         self.transform = transform
         self.test_mode = test_mode
     
     def __len__(self):
-        return self.total_num
+        return len(self.data_all)
 
     def __getitem__(self, idx):
 
-        file_idx = idx // 200
-        sample_idx = idx % 200
-        
-        file_np = np.load(self.files[file_idx], allow_pickle=True)
-        sample = file_np[sample_idx]
+        sample = self.data_all[idx]
         
         if self.test_mode:
             frame_id = sample['frame_id']

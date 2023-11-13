@@ -56,7 +56,7 @@ def main():
     print_log(f'created tensorboard.')
     
     # Create Data
-    dataset_train = AVData('/face/ylzhang/tirl_data/2/processed_data/*.npy')
+    dataset_train = AVData('/face/ylzhang/tirl_data/3/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
     BS = 1
     dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
@@ -68,7 +68,7 @@ def main():
     # Create Model
     d_model = 256
     nhead = 8
-    num_layers = 8
+    num_layers = 3
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[int(os.environ['LOCAL_RANK'])], output_device=[int(os.environ['LOCAL_RANK'])], broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')

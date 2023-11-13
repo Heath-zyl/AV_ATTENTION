@@ -8,7 +8,7 @@ import sys
 torch.set_printoptions(16)
 
 MODEL_PATH = '/face/ylzhang/tirl_workdir/20231023_082248/epoch_50.pth'
-DATA_PATH = '/face/ylzhang/tirl_data/2/processed_data/*.npy'
+DATA_PATH = '/face/ylzhang/tirl_data/3/*.npy'
 D_MODEL = 256
 NHEAD = 8
 NUM_LAYERS = 3
@@ -127,7 +127,7 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train), 100)):
+    for data_idx in tqdm(range(0, len(dataset_train), 30)):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
