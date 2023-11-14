@@ -47,8 +47,6 @@ class CarTrackTransformerEncoder(nn.Module):
             nn.Linear(d_model//2, 1),
         )
 
-        self.relu = nn.ReLU(inplace=True)
-
         self._reset_parameters()
         
     def _reset_parameters(self,):
@@ -80,13 +78,19 @@ class CarTrackTransformerEncoder(nn.Module):
         history_ebd = torch.unsqueeze(history_ebd, dim=1)
         input_ebd = torch.cat([cls_ebd, ego_ebd, future_ebd, history_ebd, traffic_ebd], dim=1).transpose(1, 0)
         
+        # print(input_ebd.shape) # torch.Size([15, 1, 16]) # torch.Size([15, 801, 16])
+        # print(traffic_ebd.shape)
+
+        # pos = [0.] + [0.05] + [0.1] + [0.15] + [0.2 for i in range(traffic_ebd.shape[1])]
+        # pos = torch.tensor(pos).unsqueeze(1).unsqueeze(1).expand(input_ebd.shape).type_as(input_ebd)
+        # input_ebd = input_ebd + pos
+        
         if traffic_veh_key_padding is not None:
             src_key_padding_mask = torch.zeros(traffic_veh_key_padding.shape[0], traffic_veh_key_padding.shape[1]+4).type_as(traffic_veh_key_padding)
             src_key_padding_mask[:, 4:] = traffic_veh_key_padding
             src_key_padding_mask = src_key_padding_mask.bool()
         else:
             src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1]+4).type_as(ego_veh_data).bool()
-        
         
         if self.training:
             memory = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)

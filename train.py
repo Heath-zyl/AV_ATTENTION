@@ -66,7 +66,7 @@ def main():
     # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
-    d_model = 32
+    d_model = 16
     nhead = 4
     num_layers = 1
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
@@ -75,8 +75,8 @@ def main():
 
     # Create Optimizer
     # optimizer = optim.SGD(model.parameters(), lr=4e-3, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 80], gamma=0.1)
+    optimizer = optim.SGD(model.parameters(), lr=8e-3, momentum=0.9, weight_decay=0.0001)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[98, 99], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
@@ -121,12 +121,13 @@ def main():
                 single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_track_data[j], 0))
                 single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_track_data[j], 0))
                 single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
-                                
+                
                 candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action, single_traffic_veh_key_padding)
                 
                 ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
                 ratio_list.append(ratio)
                 loss += -torch.log(ratio)
+                # loss += (torch.sum(torch.exp(candidates_output))) - torch.exp(expert_output)
             
             
             dist.all_reduce(loss.div_(world_size * BS))
