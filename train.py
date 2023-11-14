@@ -58,7 +58,7 @@ def main():
     # Create Data
     dataset_train = AVData('/face/ylzhang/tirl_data/3/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    BS = 1
+    BS = 2
     dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
@@ -66,19 +66,19 @@ def main():
     # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
-    d_model = 256
-    nhead = 8
-    num_layers = 3
+    d_model = 32
+    nhead = 4
+    num_layers = 1
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
     model = DDP(model, device_ids=[int(os.environ['LOCAL_RANK'])], output_device=[int(os.environ['LOCAL_RANK'])], broadcast_buffers=False, find_unused_parameters=True)
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=4e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
+    optimizer = optim.SGD(model.parameters(), lr=3e-2, momentum=0.9, weight_decay=0.0001)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[900, 940], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
-    # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[12, 14], gamma=0.1)
+    # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[900, 950], gamma=0.1)
     
     print_log('created optimizer.')
 
@@ -87,7 +87,7 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 51):
+    for epoch in range(1, 1001):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -159,7 +159,7 @@ def main():
         lr_scheduler.step()
         
         saved_path = save_model(parser.workdir, epoch, model)
-        if rank == 0:
+        if rank == 0 and epoch % 20 == 0:
             rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path)
             print_log(f'rmse: {rmse}')
             tb_rmse.write(rmse, epoch-1)
