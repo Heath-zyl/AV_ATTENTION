@@ -47,6 +47,18 @@ class CarTrackTransformerEncoder(nn.Module):
             nn.Linear(d_model//2, 1),
         )
 
+        # self.mlp_tail = nn.Sequential(
+        #     nn.Linear(d_model, 100),
+        #     nn.ReLU(),
+        #     nn.Linear(100, 100),
+        #     nn.ReLU(),
+        #     nn.Linear(100, 100),
+        #     nn.ReLU(),
+        #     nn.Linear(100, 100),
+        #     nn.Sigmoid(),
+        #     nn.Linear(100, 1),
+        # )
+
         self._reset_parameters()
         
     def _reset_parameters(self,):
@@ -104,7 +116,7 @@ class CarTrackTransformerEncoder(nn.Module):
             memory, attentions_weights_list = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            mlp_input = cls_out * torch.exp((ego_action_data+1)*3.0)
+            mlp_input = cls_out * torch.exp((ego_action_data+1)*1.0)
             out = self.mlp_tail(mlp_input)
             return out, attentions_weights_list
             
