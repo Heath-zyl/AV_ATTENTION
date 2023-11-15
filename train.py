@@ -66,7 +66,7 @@ def main():
     # [('ego_veh', torch.Size([5])), ('traffic_veh_list', torch.Size([11, 5])), ('ego_future_path', torch.Size([100, 3])), ('ego_action', torch.Size([]))]
     
     # Create Model
-    d_model = 32
+    d_model = 16
     nhead = 4
     num_layers = 1
     model = CarTrackTransformerEncoder(d_model=d_model, nhead=nhead, num_layers=num_layers).cuda()
