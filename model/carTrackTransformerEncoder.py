@@ -96,7 +96,7 @@ class CarTrackTransformerEncoder(nn.Module):
             memory = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            mlp_input = cls_out * ego_action_data
+            mlp_input = cls_out * torch.exp((ego_action_data+1)*1.0)
             out = self.mlp_tail(mlp_input)
             return out
             
@@ -104,7 +104,7 @@ class CarTrackTransformerEncoder(nn.Module):
             memory, attentions_weights_list = self.transformer_encoder(input_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
-            mlp_input = cls_out * ego_action_data
+            mlp_input = cls_out * torch.exp((ego_action_data+1)*3.0)
             out = self.mlp_tail(mlp_input)
             return out, attentions_weights_list
             
