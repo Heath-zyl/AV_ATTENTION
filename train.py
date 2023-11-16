@@ -58,7 +58,7 @@ def main():
     # Create Data
     dataset_train = AVData('/face/ylzhang/tirl_data/3/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    BS = 1
+    BS = 32
     dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
@@ -75,7 +75,8 @@ def main():
 
     # Create Optimizer
     # optimizer = optim.SGD(model.parameters(), lr=4e-3, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.SGD(model.parameters(), lr=8e-3, momentum=0.9, weight_decay=0.0001)
+    # optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
     lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[98, 99], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
@@ -109,7 +110,7 @@ def main():
             output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding)
                
             candidates_BS = 801
-            candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
+            candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4 # [-1, 1]
             candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
             loss = torch.zeros(1,).type_as(ego_veh_data)
             ratio_list = []
@@ -123,7 +124,7 @@ def main():
                 single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
                 
                 candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action, single_traffic_veh_key_padding)
-                
+                            
                 ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
                 ratio_list.append(ratio)
                 loss += -torch.log(ratio)

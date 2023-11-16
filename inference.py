@@ -7,11 +7,11 @@ from tqdm import tqdm
 import sys
 torch.set_printoptions(16)
 
-MODEL_PATH = 'workdir/20231113_190228/epoch_100.pth'
+MODEL_PATH = '/ssd/ylzhang/AV_ATTENTION/workdir/20231116_155049/epoch_45.pth'
 DATA_PATH = '/face/ylzhang/tirl_data/3/*.npy'
-D_MODEL = 256
-NHEAD = 8
-NUM_LAYERS = 8
+D_MODEL = 16
+NHEAD = 4
+NUM_LAYERS = 1
 
 
 def mapIdx(ts_num, traffic_id_list):
@@ -130,8 +130,9 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train))):
-        
+    # for data_idx in tqdm(range(0, len(dataset_train))):
+    for data_idx in tqdm(range(0, 32)):
+           
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
                 
@@ -163,11 +164,12 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
         
         # candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
         candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action)
-        candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
+        # candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
+        candidates_logit = candidates_output
         
         max_idx = torch.argmax(candidates_logit)
         
-        print(candidates_action_list[max_idx])
+        print(candidates_action_list[max_idx]*4-1, ego_action.data*4-1, candidates_action_list[max_idx] - ego_action.data)
         
         diff = torch.abs(ego_action.data - candidates_action_list[max_idx]) * 4
         
@@ -181,9 +183,9 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
 
 if __name__ == '__main__':
     
-    for i in range(32):
-        main(i)
+    # for i in range(32):
+    #     main(i)
     
     # main(int(sys.argv[1]))
     
-    # print(f'final res: {test()}')
+    print(f'final res: {test()}')

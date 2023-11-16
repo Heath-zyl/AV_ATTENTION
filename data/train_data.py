@@ -141,14 +141,15 @@ class AVData(Dataset):
             data_all = np.delete(data_all, i)
         
         self.data_all = data_all
-        
+
         self.transform = transform
         self.test_mode = test_mode
     
     def __len__(self):
-        return len(self.data_all)
+        return len(self.data_all) * 100
 
     def __getitem__(self, idx):
+        idx = idx % 32
 
         sample = self.data_all[idx]
         
