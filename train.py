@@ -58,7 +58,7 @@ def main():
     # Create Data
     dataset_train = AVData('/face/ylzhang/tirl_data/3/*.npy')
     distributedSampler = DistributedSampler(dataset_train, num_replicas=world_size, rank=rank, seed=18813173471)
-    BS = 2
+    BS = 1
     dataloader_train = DataLoader(dataset_train, num_workers=1, batch_size=BS, sampler=distributedSampler, pin_memory=True, collate_fn=collater)
     print_log('created data.')
 
@@ -74,8 +74,9 @@ def main():
     print_log(f'created model d_model={d_model} nhead={nhead} num_layer={num_layers}.')
 
     # Create Optimizer
-    optimizer = optim.SGD(model.parameters(), lr=3e-2, momentum=0.9, weight_decay=0.0001)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[900, 940], gamma=0.1)
+    # optimizer = optim.SGD(model.parameters(), lr=3e-2, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[600, 650], gamma=0.1)
     
     # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
     # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[900, 950], gamma=0.1)
@@ -87,7 +88,10 @@ def main():
     # criterion = torch.nn.L1Loss()
     # print_log('created criterion.')
 
-    for epoch in range(1, 1001):
+    candidates_BS = 801
+    print_log(f'the num of candidates: {candidates_BS}')
+
+    for epoch in range(1, 1000):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
             print_log(f'setting epoch number: {epoch}')
             dataloader_train.sampler.set_epoch(epoch)
@@ -97,7 +101,7 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-            
+                        
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
@@ -107,8 +111,11 @@ def main():
             
             output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding)
                
-            candidates_BS = 801
-            candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
+            if candidates_BS == 801:
+                candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
+            elif candidates_BS == 81:
+                candidates_action_list = (np.arange(-5, 3, 0.1) + 1) / 4
+                
             candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
             loss = torch.zeros(1,).type_as(ego_veh_data)
             ratio_list = []
@@ -160,7 +167,7 @@ def main():
         
         saved_path = save_model(parser.workdir, epoch, model)
         if rank == 0 and epoch % 20 == 0:
-            rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path)
+            rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path, candidates_num=candidates_BS)
             print_log(f'rmse: {rmse}')
             tb_rmse.write(rmse, epoch-1)
         

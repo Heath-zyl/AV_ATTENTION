@@ -6,7 +6,7 @@ export PYTHONPATH=/workspace/cluster:$PYTHONPATH
 CURRENT_TIME=`date "+%Y%m%d-%H%M%S"`
 
 
-WORLD_SIZE=8
+WORLD_SIZE=4
 PORT=${PORT:-29502}
 MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
 

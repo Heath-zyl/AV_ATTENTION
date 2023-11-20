@@ -138,9 +138,11 @@ class AVData(Dataset):
         self.test_mode = test_mode
     
     def __len__(self):
-        return len(self.data_all)
+        return len(self.data_all) * 5
 
     def __getitem__(self, idx):
+
+        idx = idx % len(self.data_all)
 
         sample = self.data_all[idx]
         

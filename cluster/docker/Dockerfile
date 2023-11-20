@@ -11,4 +11,5 @@ COPY ./master_ops.py /workspace
 COPY ./inference.py /workspace
 COPY ./train.py /workspace
 COPY ./cluster.conf /workspace
+COPY ./temp.txt /workspace
 COPY ./README.md /workspace
