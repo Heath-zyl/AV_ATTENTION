@@ -13,4 +13,5 @@ MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
 python -m cluster.launch \
     --config /workspace/cluster.conf --ldap ylzhang --jobname avatn --namespace face  --nnodes $WORLD_SIZE \
     train.py -- \
-    --workdir /face/ylzhang/tirl_workdir
+    --workdir /face/ylzhang/tirl_workdir/v6.0 \
+    --lambda 2000.0

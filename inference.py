@@ -127,11 +127,11 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     model = model.cuda()
     
     # Create Data
-    dataset_train = AVData(data_path, test_mode=True)
+    dataset_train = AVData(data_path, collision_file_path='/face/ylzhang/tirl_data/3/collision_res_for_data000.txt', test_mode=True)
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train), 50)):
+    for data_idx in tqdm(range(0, len(dataset_train)//5, 50)):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
