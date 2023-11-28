@@ -27,7 +27,7 @@ class TransformerEncoderLayer(nn.Module):
         >>> out = encoder_layer(src)
     """
 
-    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation="relu"):
+    def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.0, activation="relu"):
         super(TransformerEncoderLayer, self).__init__()
         # MultiheadAttention model
         self.self_attn = MultiheadAttention(d_model, nhead, dropout=dropout)
