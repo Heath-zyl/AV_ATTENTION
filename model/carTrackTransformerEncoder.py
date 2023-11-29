@@ -91,8 +91,7 @@ class CarTrackTransformerEncoder(nn.Module):
             src_key_padding_mask = src_key_padding_mask.bool()
         else:
             src_key_padding_mask = torch.zeros(traffic_veh_data.shape[0], traffic_veh_data.shape[1]+4).type_as(ego_veh_data).bool()
-        
-        
+                
         if self.training:
             memory = self.transformer_encoder(input_ebd_with_pos_ebd, src_key_padding_mask=src_key_padding_mask)
             cls_out = memory[0]

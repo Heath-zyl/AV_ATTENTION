@@ -16,6 +16,7 @@ from torch.utils.data import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import numpy as np
 from inference import test
+from torch.nn.utils import clip_grad_norm_
 
 
 def parse(args=None):
@@ -140,7 +141,18 @@ def main():
                 
                 ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
                 ratio_list.append(ratio)
-                loss1 += -torch.log(ratio + 1e-9)
+                
+                if torch.isnan(ratio).sum() > 0:
+                    print_log('ratio NaN: ', torch.exp(expert_output), torch.sum(torch.exp(candidates_output)))
+                    # ratio = min(ratio, torch.tesnor(1.0).type_as(ratio))
+                
+                temp = -torch.log(ratio + 1e-9)
+                if torch.isnan(temp):
+                    print_log(f'loss1 NaN: {ratio}')
+                    temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
+                loss1 += temp
+                
+                # loss1 += -torch.log(ratio + 1e-9)
             
                 # 负面演示的概率
                 negative_action = negative_action_data[j].cuda()
@@ -148,7 +160,16 @@ def main():
                 
                 if negative_BS == 0:
                     prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
-                    loss2 += -torch.log(prob_safe)
+                    
+                    if torch.isnan(prob_safe).sum() > 0:
+                        print_log(f'prob_safe warning in negative_BS=0: {prob_safe}')
+                        prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
+                    
+                    temp = -torch.log(prob_safe + 1e-9)
+                    if torch.isnan(temp).sum() > 0:
+                        print_log(f'loss2 NaN in negative_BS=0: {prob_safe}')
+                        temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
+                    loss2 += temp
                     prob_safe_list.append(prob_safe)
                 
                 else:
@@ -167,9 +188,14 @@ def main():
                     prob_safe = 1 - torch.sum(torch.exp(negative_output)) / (torch.sum(torch.exp(candidates_output)))
 
                     if torch.isnan(prob_safe).sum() > 0:
-                        prob_safe = torch.tensor(1.).type_as(candidates_output)
+                        print_log(f'prob_safe warning in negative_BS={negative_BS}: {prob_safe}')
+                        prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
                     
-                    loss2 += -torch.log(prob_safe + 1e-9)
+                    temp = -torch.log(prob_safe + 1e-9)
+                    if torch.isnan(temp).sum() > 0:
+                        print_log(f'loss2 NaN in negative_BS={negative_BS}: {prob_safe}')
+                        temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
+                    loss2 += temp
                     prob_safe_list.append(prob_safe)
             
             dist.all_reduce(loss1.div_(BS*world_size))
@@ -193,6 +219,9 @@ def main():
             
             optimizer.zero_grad()
             loss.backward()
+            
+            clip_grad_norm_(model.parameters(), max_norm=100, norm_type=2)
+            
             optimizer.step()
 
             # dist.all_reduce(ratio_sum.div_(world_size * BS))
