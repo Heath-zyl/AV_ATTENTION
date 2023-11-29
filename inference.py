@@ -7,8 +7,8 @@ from tqdm import tqdm
 import sys
 torch.set_printoptions(16)
 
-MODEL_PATH = '/face/ylzhang/tirl_workdir/20231116_151506/epoch_999.pth'
-# MODEL_PATH = '/face/ylzhang/tirl_workdir/20231117_030248/epoch_999.pth'
+# MODEL_PATH = '/face/ylzhang/tirl_workdir/v5.0/20231116_151506/epoch_999.pth'
+MODEL_PATH = '/face/ylzhang/tirl_workdir/v6.0/20231123_104956/epoch_119.pth'
 
 DATA_PATH = '/face/ylzhang/tirl_data/test/*.npy'
 DATA_PATH = '/face/ylzhang/tirl_data/3/TIRL_train_data_000.npy'
@@ -131,7 +131,7 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train)//5, 50)):
+    for data_idx in tqdm(range(0, len(dataset_train)//5)):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
