@@ -22,7 +22,6 @@ from torch.nn.utils import clip_grad_norm_
 def parse(args=None):
     parser = argparse.ArgumentParser(description='Simple training script for training a network.')
     parser.add_argument('--workdir', help='Dir to save log and checkpoint', default='workdir/')
-    parser.add_argument('--lbd', type=float, default=600., help='weight for loss2')
     parser.add_argument('--local_rank', type=int, default=-1)
     parser = parser.parse_args(args)
 
@@ -52,11 +51,7 @@ def main():
     # Create Tensorboard
     if rank == 0:
         tb_loss = TB(workdir=parser.workdir, title='loss')
-        tb_loss1 = TB(workdir=parser.workdir, title='loss1')
-        tb_loss2 = TB(workdir=parser.workdir, title='loss2')
         tb_lr = TB(workdir=parser.workdir, title='lr')
-        tb_avg_prob = TB(workdir=parser.workdir, title='avg_prob')
-        tb_avg_safe_prob = TB(workdir=parser.workdir, title='avg_safe_prob')
         tb_rmse = TB(workdir=parser.workdir, title='rmse')
     print_log(f'created tensorboard.')
     
@@ -89,13 +84,9 @@ def main():
     print_log('created optimizer.')
 
     # Create Criterion
-    # criterion = torch.nn.MSELoss(size_average=None, reduce=None, reduction='mean')
+    criterion = torch.nn.MSELoss(size_average=None, reduce=None, reduction='mean')
     # criterion = torch.nn.L1Loss()
-    # print_log('created criterion.')
-
-    candidates_BS = 81
-    print_log(f'the num of candidates: {candidates_BS}')
-    print_log(f'the weight of loss_2: {parser.lbd}')
+    print_log('created criterion.')
 
     for epoch in range(1, 1000+1):
         if hasattr(dataloader_train.sampler, 'set_epoch'):
@@ -107,115 +98,20 @@ def main():
             print_log('about to start training...')
             
         for i, batch in enumerate(dataloader_train):
-                        
+            
             ego_veh_data = batch['ego_veh_data'].cuda()
             traffic_veh_data = batch['traffic_veh_data'].cuda()
             ego_future_track_data = batch['ego_future_track_data'].cuda()
             ego_history_track_data = batch['ego_history_track_data'].cuda()
             ego_action_data = batch['ego_action_data'].cuda()
             traffic_veh_key_padding = batch['traffic_veh_key_padding'].cuda()
-            negative_action_data = batch['negative_action_data'] # .cuda()
             
-            output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding)
-               
-            if candidates_BS == 801:
-                candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
-            elif candidates_BS == 81:
-                candidates_action_list = (np.arange(-5, 3.1, 0.1) + 1) / 4
-                
-            candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action_data)
-            loss1 = torch.zeros(1,).type_as(ego_veh_data)
-            loss2 = torch.zeros(1,).type_as(ego_veh_data)
-            ratio_list = []
-            prob_safe_list = []
-            for j in range(len(output)):
-                expert_output = output[j]
-
-                single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh_data[j], 0))         
-                single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_data[j], 0))
-                single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_track_data[j], 0))
-                single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_track_data[j], 0))
-                single_traffic_veh_key_padding = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
-                                
-                candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action, single_traffic_veh_key_padding)
-                
-                ratio = torch.exp(expert_output) / (torch.sum(torch.exp(candidates_output)))
-                ratio_list.append(ratio)
-                
-                if torch.isnan(ratio).sum() > 0:
-                    print_log('ratio NaN: ', torch.exp(expert_output), torch.sum(torch.exp(candidates_output)))
-                    # ratio = min(ratio, torch.tesnor(1.0).type_as(ratio))
-                
-                temp = -torch.log(ratio + 1e-9)
-                if torch.isnan(temp):
-                    print_log(f'loss1 NaN: {ratio}')
-                    temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
-                loss1 += temp
-                
-                # loss1 += -torch.log(ratio + 1e-9)
+            output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, traffic_veh_key_padding)
+            ego_action_data = torch.unsqueeze(ego_action_data, 1)
+                        
+            loss = criterion(output, ego_action_data)
             
-                # 负面演示的概率
-                negative_action = negative_action_data[j].cuda()
-                negative_BS = len(negative_action)
-                
-                if negative_BS == 0:
-                    prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
-                    
-                    if torch.isnan(prob_safe).sum() > 0:
-                        print_log(f'prob_safe warning in negative_BS=0: {prob_safe}')
-                        prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
-                    
-                    temp = -torch.log(prob_safe + 1e-9)
-                    if torch.isnan(temp).sum() > 0:
-                        print_log(f'loss2 NaN in negative_BS=0: {prob_safe}')
-                        temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
-                    loss2 += temp
-                    prob_safe_list.append(prob_safe)
-                
-                else:
-                    
-                    negative_ego_veh_data = expand_dim_0(negative_BS, torch.unsqueeze(ego_veh_data[j], 0))
-                    negative_traffic_veh_data = expand_dim_0(negative_BS, torch.unsqueeze(traffic_veh_data[j], 0))
-                    negative_ego_future_track_data = expand_dim_0(negative_BS, torch.unsqueeze(ego_future_track_data[j], 0))
-                    negative_ego_history_track_data = expand_dim_0(negative_BS, torch.unsqueeze(ego_history_track_data[j], 0))
-                    negative_traffic_veh_key_padding = expand_dim_0(negative_BS, torch.unsqueeze(traffic_veh_key_padding[j], 0))
-
-
-                    negative_output = model(negative_ego_veh_data, negative_ego_future_track_data,
-                                            negative_ego_history_track_data, negative_traffic_veh_data, negative_action,
-                                            negative_traffic_veh_key_padding)
-
-                    prob_safe = 1 - torch.sum(torch.exp(negative_output)) / (torch.sum(torch.exp(candidates_output)))
-
-                    if torch.isnan(prob_safe).sum() > 0:
-                        print_log(f'prob_safe warning in negative_BS={negative_BS}: {prob_safe}')
-                        prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
-                    
-                    temp = -torch.log(prob_safe + 1e-9)
-                    if torch.isnan(temp).sum() > 0:
-                        print_log(f'loss2 NaN in negative_BS={negative_BS}: {prob_safe}')
-                        temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
-                    loss2 += temp
-                    prob_safe_list.append(prob_safe)
-            
-            dist.all_reduce(loss1.div_(BS*world_size))
-            dist.all_reduce(loss2.div_(BS*world_size))
-
-            loss = loss1 + parser.lbd * loss2
-            
-            if torch.isnan(loss).sum() > 0:
-                # input = torch.tensor(1.0, requires_grad=True).type_as(candidates_output)
-                # loss = -torch.log(input)
-                print('Loss NaN warning.')
-                loss = torch.tensor(0., requires_grad=True).type_as(candidates_output)
-
-            # dist.all_reduce(loss.div_(world_size))
-            
-            ratio_avg = torch.sum(torch.tensor(ratio_list)).cuda()
-            dist.all_reduce(ratio_avg.div_(world_size * BS))
-            
-            prob_safe_avg = torch.sum(torch.tensor(prob_safe_list)).cuda()
-            dist.all_reduce(prob_safe_avg.div_(world_size * BS))
+            dist.all_reduce(loss.div_(BS*world_size))
             
             optimizer.zero_grad()
             loss.backward()
@@ -231,28 +127,23 @@ def main():
             global_iter = (epoch - 1) * len(dataloader_train) + i
             if rank == 0 and global_iter % 50 == 0:
                 tb_loss.write(loss.data, global_iter)
-                tb_loss1.write(loss1.data, global_iter)
-                tb_loss2.write(loss2.data, global_iter)
-                tb_avg_prob.write(ratio_avg.data, global_iter)
-                tb_avg_safe_prob.write(prob_safe_avg.data, global_iter)
                 tb_lr.write(current_lr, global_iter)
             
             if i % 10 == 0:
-                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss1:{"%.4f"%loss1.data} | loss2:{"%.4f"%loss2.data} | loss:{"%.4f"%loss.data} | ratio_avg: {"%.4f"%ratio_avg} | safe_avg: {"%.4f"%prob_safe_avg}')
+                print_log(f'epoch:{epoch} | iter:{i}/{len(dataloader_train)} | lr:{"%.4e"%current_lr} | loss:{"%.4f"%loss.data}')
         
             
         lr_scheduler.step()
         
         saved_path = save_model(parser.workdir, epoch, model)
-        if rank == 0: # and epoch % 20 == 0:
-            rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path, candidates_num=candidates_BS)
+        if rank == 0 and epoch % 50 == 0:
+            rmse = test(d_model=d_model, nhead=nhead, num_layers=num_layers, model_path=saved_path)
             print_log(f'rmse: {rmse}')
             tb_rmse.write(rmse, epoch-1)
         
     if rank == 0:
         tb_loss.close()
         tb_lr.close()
-        tb_avg_prob.close()
         tb_rmse.close()
 
 def expand_dim_0(sz, tensor):

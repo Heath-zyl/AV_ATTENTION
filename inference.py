@@ -8,10 +8,11 @@ import sys
 torch.set_printoptions(16)
 
 # MODEL_PATH = '/face/ylzhang/tirl_workdir/v5.0/20231116_151506/epoch_999.pth'
-MODEL_PATH = '/face/ylzhang/tirl_workdir/v6.0/20231123_104956/epoch_119.pth'
+# MODEL_PATH = '/face/ylzhang/tirl_workdir/v6.0/20231123_104956/epoch_119.pth'
+MODEL_PATH = '/face/ylzhang/tirl_workdir/action_clone/v1.0/20231129_113456/epoch_50.pth'
 
 DATA_PATH = '/face/ylzhang/tirl_data/test/*.npy'
-DATA_PATH = '/face/ylzhang/tirl_data/3/TIRL_train_data_000.npy'
+# DATA_PATH = '/face/ylzhang/tirl_data/3/TIRL_train_data_000.npy'
 
 D_MODEL = 16
 NHEAD = 4
@@ -110,12 +111,9 @@ def main(data_idx):
 
 
 
-def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_PATH, data_path=DATA_PATH, candidates_num=81):
+def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_PATH, data_path=DATA_PATH):
     
     # Create model
-    # d_model = d_model
-    # nhead = nhead
-    # num_layers = num_layers
     model = CarTrackTransformerEncoder(num_layers=num_layers, nhead=nhead, d_model=d_model)
     weights = torch.load(model_path, map_location='cpu')
     
@@ -128,10 +126,9 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     
     # Create Data
     dataset_train = AVData(data_path, collision_file_path='/face/ylzhang/tirl_data/3/collision_res_for_data000.txt', test_mode=True)
-    # print(f'total num: {len(dataset_train)}')
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train)//5)):
+    for data_idx in tqdm(range(0, len(dataset_train))):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
@@ -140,44 +137,21 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
             print(f'traffic_veh.numel() == 0: {data_idx}')
             continue
         
-        # print('************************************')
-        # print(f'frame_id: {frame_id}')
-        # print(f'ego_veg_id: {ego_veh_id}')
-        # print(f'vec_traffic_id_list({len(vec_traffic_id_list)}): {",".join(map(str, vec_traffic_id_list))}')
+        ego_veh = torch.unsqueeze(ego_veh, 0).cuda()
+        traffic_veh = torch.unsqueeze(traffic_veh, 0).cuda()
+        ego_future_path = torch.unsqueeze(ego_future_path, 0).cuda()
+        ego_history_path = torch.unsqueeze(ego_history_path, 0).cuda()
+        ego_action = torch.unsqueeze(ego_action, 0).cuda()
         
-        # print('************************************')
-        ego_veh = torch.unsqueeze(ego_veh, 0)
-        traffic_veh = torch.unsqueeze(traffic_veh, 0)
-        ego_future_path = torch.unsqueeze(ego_future_path, 0)
-        ego_history_path = torch.unsqueeze(ego_history_path, 0)
-        ego_action = torch.unsqueeze(ego_action, 0)
+        with torch.no_grad():
+            candidates_output = model(ego_veh, ego_future_path, ego_history_path, traffic_veh)
         
-        # candidates
-        if candidates_num == 801:
-            candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
-            candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action).cuda()
-            candidates_BS = 801
-        elif candidates_num == 81:
-            candidates_action_list = (np.arange(-5, 3.1, 0.1) + 1) / 4
-            candidates_action = torch.Tensor(candidates_action_list).type_as(ego_action).cuda()
-            candidates_BS = 81
-        
-        single_ego_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_veh[0], 0)).cuda()       
-        single_traffic_veh_data = expand_dim_0(candidates_BS, torch.unsqueeze(traffic_veh[0], 0)).cuda()
-        single_ego_future_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_future_path[0], 0)).cuda()
-        single_ego_history_track_data = expand_dim_0(candidates_BS, torch.unsqueeze(ego_history_path[0], 0)).cuda()
-        
-        # candidates_output = model(single_ego_veh_data, single_traffic_veh_data, single_ego_future_track_data, candidates_action)
-        candidates_output = model(single_ego_veh_data, single_ego_future_track_data, single_ego_history_track_data, single_traffic_veh_data, candidates_action)
         candidates_logit, _weights = torch.squeeze(candidates_output[0], 1), candidates_output[1]
         
-        max_idx = torch.argmax(candidates_logit)
-        
-        diff = torch.abs(ego_action.data - candidates_action_list[max_idx]) * 4
-        
+        diff = torch.abs(ego_action.data - candidates_logit) * 4
         res += diff**2
         cnt += 1
-        
+
     rmse = (res / cnt) ** 0.5
     # print(f'final res: {rmse}')
     return rmse

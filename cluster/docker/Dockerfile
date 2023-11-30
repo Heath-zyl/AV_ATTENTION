@@ -7,7 +7,6 @@ COPY ./inference.py /workspace/inference.py
 COPY ./train.py /workspace/train.py
 COPY ./master_ops.py /workspace/master_ops.py
 COPY ./data /workspace/data
-COPY ./epoch_51.pth /workspace
 COPY ./master_ops.py /workspace
 COPY ./inference.py /workspace
 COPY ./train.py /workspace

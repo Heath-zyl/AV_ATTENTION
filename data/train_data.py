@@ -106,7 +106,7 @@ def transform(sample):
 
     
     # 转换负样本加速度
-    new_sample['negative_action_data'] = (np.array(sample['negative_action_data']) + 1) / 4.
+    # new_sample['negative_action_data'] = (np.array(sample['negative_action_data']) + 1) / 4.
     
     
     # ToTensor
@@ -141,19 +141,19 @@ class AVData(Dataset):
         self.transform = transform
         self.test_mode = test_mode
         
-        self.collision_dict = {}
-        with open(collision_file_path, 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                ego_id, frame_id, *collision_actions = line.strip().split(',')
-                ego_id, frame_id = ego_id.strip().split(':')[-1], frame_id.strip().split(':')[-1]
+        # self.collision_dict = {}
+        # with open(collision_file_path, 'r') as f:
+        #     lines = f.readlines()
+        #     for line in lines:
+        #         ego_id, frame_id, *collision_actions = line.strip().split(',')
+        #         ego_id, frame_id = ego_id.strip().split(':')[-1], frame_id.strip().split(':')[-1]
 
-                if len(collision_actions) == 1 and collision_actions[0] == '':
-                    self.collision_dict[f'{ego_id}-{frame_id}'] = []
+        #         if len(collision_actions) == 1 and collision_actions[0] == '':
+        #             self.collision_dict[f'{ego_id}-{frame_id}'] = []
                 
-                else:
-                    collision_actions = list(map(lambda x:float(x.strip()), collision_actions))
-                    self.collision_dict[f'{ego_id}-{frame_id}'] = collision_actions
+        #         else:
+        #             collision_actions = list(map(lambda x:float(x.strip()), collision_actions))
+        #             self.collision_dict[f'{ego_id}-{frame_id}'] = collision_actions
                     
     
     def __len__(self):
@@ -168,15 +168,12 @@ class AVData(Dataset):
         frame_id = sample['frame_id']
         ego_veh_id = sample['ego_veh'][0]
         
-        sample['negative_action_data'] = self.collision_dict[f'{ego_veh_id}-{frame_id}']
+        # sample['negative_action_data'] = self.collision_dict[f'{ego_veh_id}-{frame_id}']
         
         if self.test_mode:    
             vec_traffic_id_list = []
-            # print('traffic veh id: ', end='')
             for traffic_vec in sample['traffic_veh_list']:
-                # print(traffic_vec[0], end=',')
                 vec_traffic_id_list.append(traffic_vec[0])
-            # print()
             return self.transform(sample), frame_id, ego_veh_id, vec_traffic_id_list
             
         
