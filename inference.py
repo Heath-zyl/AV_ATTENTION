@@ -9,10 +9,10 @@ torch.set_printoptions(16)
 
 # MODEL_PATH = '/face/ylzhang/tirl_workdir/v5.0/20231116_151506/epoch_999.pth'
 # MODEL_PATH = '/face/ylzhang/tirl_workdir/v6.0/20231123_104956/epoch_119.pth'
-MODEL_PATH = '/face/ylzhang/tirl_workdir/action_clone/v1.0/20231129_113456/epoch_50.pth'
+MODEL_PATH = '/face/ylzhang/tirl_workdir/action_clone/v1.0/20231129_113456/epoch_1.pth'
 
-DATA_PATH = '/face/ylzhang/tirl_data/test/*.npy'
-# DATA_PATH = '/face/ylzhang/tirl_data/3/TIRL_train_data_000.npy'
+# DATA_PATH = '/face/ylzhang/tirl_data/test/*.npy'
+DATA_PATH = '/face/ylzhang/tirl_data/3/TIRL_train_data_000.npy'
 
 D_MODEL = 16
 NHEAD = 4
@@ -128,7 +128,7 @@ def test(d_model=D_MODEL, nhead=NHEAD, num_layers=NUM_LAYERS, model_path=MODEL_P
     dataset_train = AVData(data_path, collision_file_path='/face/ylzhang/tirl_data/3/collision_res_for_data000.txt', test_mode=True)
     
     res, cnt = 0, 0
-    for data_idx in tqdm(range(0, len(dataset_train))):
+    for data_idx in tqdm(range(0, len(dataset_train)//5)):
         
         data_temp, frame_id, ego_veh_id, vec_traffic_id_list = dataset_train[data_idx]
         ego_veh, traffic_veh, ego_future_path, ego_history_path, ego_action = data_temp['ego_veh'], data_temp['traffic_veh_list'], data_temp['ego_future_path'], data_temp['ego_history_path'], data_temp['ego_action']
