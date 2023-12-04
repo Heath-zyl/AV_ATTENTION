@@ -16,7 +16,6 @@ from torch.utils.data import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import numpy as np
 from inference import test
-from torch.nn.utils import clip_grad_norm_
 
 
 def parse(args=None):
@@ -80,11 +79,8 @@ def main():
 
     # Create Optimizer
     # optimizer = optim.SGD(model.parameters(), lr=3e-2, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-2)
     lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[600,], gamma=0.1)
-    
-    # optimizer = optim.AdamW(model.parameters(), lr=1e-2)
-    # lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[900, 950], gamma=0.1)
     
     print_log('created optimizer.')
 
@@ -117,7 +113,7 @@ def main():
             negative_action_data = batch['negative_action_data'] # .cuda()
             
             output = model(ego_veh_data, ego_future_track_data, ego_history_track_data, traffic_veh_data, ego_action_data, traffic_veh_key_padding)
-               
+            
             if candidates_BS == 801:
                 candidates_action_list = (np.arange(-5, 3.01, 0.01) + 1) / 4
             elif candidates_BS == 81:
@@ -143,17 +139,15 @@ def main():
                 ratio_list.append(ratio)
                 
                 if torch.isnan(ratio).sum() > 0:
-                    print_log('ratio NaN: ', torch.exp(expert_output), torch.sum(torch.exp(candidates_output)))
+                    print_log('ratio NaN: ', str(expert_output), str(candidates_output))
                     # ratio = min(ratio, torch.tesnor(1.0).type_as(ratio))
                 
                 temp = -torch.log(ratio + 1e-9)
-                if torch.isnan(temp):
-                    print_log(f'loss1 NaN: {ratio}')
+                if torch.isnan(temp).sum() > 0 or temp < 0:
+                    print_log(f'loss1 NaN: {str(ratio)}', str(expert_output), str(candidates_output))
                     temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
                 loss1 += temp
-                
-                # loss1 += -torch.log(ratio + 1e-9)
-            
+                            
                 # 负面演示的概率
                 negative_action = negative_action_data[j].cuda()
                 negative_BS = len(negative_action)
@@ -162,12 +156,12 @@ def main():
                     prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
                     
                     if torch.isnan(prob_safe).sum() > 0:
-                        print_log(f'prob_safe warning in negative_BS=0: {prob_safe}')
+                        print_log(f'prob_safe warning in negative_BS=0: {str(prob_safe)}')
                         prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
                     
                     temp = -torch.log(prob_safe + 1e-9)
                     if torch.isnan(temp).sum() > 0:
-                        print_log(f'loss2 NaN in negative_BS=0: {prob_safe}')
+                        print_log(f'loss2 NaN in negative_BS=0: {str(prob_safe)}')
                         temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
                     loss2 += temp
                     prob_safe_list.append(prob_safe)
@@ -188,12 +182,12 @@ def main():
                     prob_safe = 1 - torch.sum(torch.exp(negative_output)) / (torch.sum(torch.exp(candidates_output)))
 
                     if torch.isnan(prob_safe).sum() > 0:
-                        print_log(f'prob_safe warning in negative_BS={negative_BS}: {prob_safe}')
+                        print_log(f'prob_safe warning in negative_BS={negative_BS}: {negative_output}, {candidates_output}, {torch.exp(negative_output)}, {torch.exp(candidates_output)}')
                         prob_safe = torch.tensor(1., requires_grad=True).type_as(candidates_output)
                     
                     temp = -torch.log(prob_safe + 1e-9)
                     if torch.isnan(temp).sum() > 0:
-                        print_log(f'loss2 NaN in negative_BS={negative_BS}: {prob_safe}')
+                        print_log(f'loss2 NaN in negative_BS={negative_BS}: {str(prob_safe)}')
                         temp = torch.tensor(0., requires_grad=True).type_as(candidates_output)
                     loss2 += temp
                     prob_safe_list.append(prob_safe)
@@ -219,9 +213,7 @@ def main():
             
             optimizer.zero_grad()
             loss.backward()
-            
-            clip_grad_norm_(model.parameters(), max_norm=100, norm_type=2)
-            
+                        
             optimizer.step()
 
             # dist.all_reduce(ratio_sum.div_(world_size * BS))

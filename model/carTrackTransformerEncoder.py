@@ -98,6 +98,7 @@ class CarTrackTransformerEncoder(nn.Module):
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
             mlp_input = cls_out + ego_action_data
             out = self.mlp_tail(mlp_input)
+            out = torch.clip(out, max=80.)
             return out
             
         else:
@@ -106,7 +107,7 @@ class CarTrackTransformerEncoder(nn.Module):
             ego_action_data = torch.unsqueeze(ego_action_data, dim=1)
             mlp_input = cls_out + ego_action_data
             out = self.mlp_tail(mlp_input)
-            return out, attentions_weights_list
+            return torch.clip(out, max=80), attentions_weights_list
             
         
     
